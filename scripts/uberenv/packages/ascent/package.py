@@ -70,6 +70,8 @@ class Ascent(Package, CudaPackage):
     # variants for dev-tools (docs, etc)
     variant("doc", default=False, description="Build Conduit's documentation")
 
+    variant("dray", default=False, description="Build Devil Ray")
+
     ###########################################################################
     # package dependencies
     ###########################################################################
@@ -116,13 +118,29 @@ class Ascent(Package, CudaPackage):
     depends_on("vtkh@ascent_ver~shared+cuda~openmp", when="~shared+vtkh+cuda~openmp")
 
     # mfem
-    depends_on("mfem+shared+mpi+conduit", when="+shared+mfem+mpi")
-    depends_on("mfem~shared+mpi+conduit", when="~shared+mfem+mpi")
+    depends_on("mfem+shared+mpi+conduit+threadsafe", when="+shared+mfem+mpi")
+    depends_on("mfem~shared+mpi+conduit+threadsafe", when="~shared+mfem+mpi")
 
-    depends_on("mfem+shared~mpi+conduit", when="+shared+mfem~mpi")
-    depends_on("mfem~shared~mpi+conduit", when="~shared+mfem~mpi")
+    depends_on("mfem+shared~mpi+conduit+threadsafe", when="+shared+mfem~mpi")
+    depends_on("mfem~shared~mpi+conduit+threadsafe", when="~shared+mfem~mpi")
 
     depends_on("adios", when="+adios")
+
+
+    depends_on("raja@0.9.0+cuda~openmp", when="+dray+cuda~openmp")
+    depends_on("raja@0.9.0+cuda+openmp", when="+dray+cuda+openmp")
+    depends_on("raja@0.9.0+cuda~openmp~shared", when="+dray+cuda~openmp~shared")
+    depends_on("raja@0.9.0+cuda+openmp~shared", when="+dray+cuda+openmp~shared")
+
+    depends_on("raja@0.9.0~cuda~openmp", when="+dray~cuda~openmp")
+    depends_on("raja@0.9.0~cuda+openmp", when="+dray~cuda+openmp")
+    depends_on("raja@0.9.0~cuda~openmp~shared", when="+dray~cuda~openmp~shared")
+    depends_on("raja@0.9.0~cuda+openmp~shared", when="+dray~cuda+openmp~shared")
+
+    depends_on("umpire@1.0.0+cuda", when="+dray+cuda")
+    depends_on("umpire@1.0.0+cuda~shared", when="+dray+cuda~shared")
+    depends_on("umpire@1.0.0~cuda", when="+dray~cuda")
+    depends_on("umpire@1.0.0~cuda~shared", when="+dray~cuda~shared")
 
     #######################
     # Documentation related
@@ -447,6 +465,24 @@ class Ascent(Package, CudaPackage):
             cfg.write(cmake_cache_entry("MFEM_DIR", spec['mfem'].prefix))
         else:
             cfg.write("# mfem not built by spack \n")
+
+        #######################
+        # RAJA
+        #######################
+        if "+dray" in spec:
+            cfg.write("# raja from spack \n")
+            cfg.write(cmake_cache_entry("RAJA_DIR", spec['raja'].prefix))
+        else:
+            cfg.write("# raja not built by spack \n")
+
+        #######################
+        # Umpire
+        #######################
+        if "+dray" in spec:
+            cfg.write("# umpire from spack \n")
+            cfg.write(cmake_cache_entry("UMPIRE_DIR", spec['umpire'].prefix))
+        else:
+            cfg.write("# umpire not built by spack \n")
 
         #######################
         # Adios
