@@ -66,6 +66,7 @@
 #if defined(ASCENT_VTKM_ENABLED)
     #include <ascent_runtime_vtkh_filters.hpp>
     #include <ascent_runtime_rover_filters.hpp>
+    #include <ascent_runtime_dray_filters.hpp>
 #endif
 
 #ifdef ASCENT_MPI_ENABLED
@@ -140,6 +141,7 @@ register_builtin()
     AscentRuntime::register_filter_type<VTKHVectorMagnitude>("transforms","vector_magnitude");
     AscentRuntime::register_filter_type<RoverXRay>("extracts", "xray");
     AscentRuntime::register_filter_type<RoverVolume>("extracts", "volume");
+    AscentRuntime::register_filter_type<RoverVolume>("extracts", "dray_mesh");
 
     AscentRuntime::register_filter_type<AddPlot>();
     AscentRuntime::register_filter_type<CreatePlot>();

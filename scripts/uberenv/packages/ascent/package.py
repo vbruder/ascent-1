@@ -126,6 +126,7 @@ class Ascent(Package, CudaPackage):
 
     depends_on("adios", when="+adios")
 
+    depends_on("dray", when="+dray")
 
     depends_on("raja@0.9.0+cuda~openmp", when="+dray+cuda~openmp")
     depends_on("raja@0.9.0+cuda+openmp", when="+dray+cuda+openmp")
@@ -483,6 +484,15 @@ class Ascent(Package, CudaPackage):
             cfg.write(cmake_cache_entry("UMPIRE_DIR", spec['umpire'].prefix))
         else:
             cfg.write("# umpire not built by spack \n")
+
+        #######################
+        # DevilRay
+        #######################
+        if "+dray" in spec:
+            cfg.write("# dray from spack \n")
+            cfg.write(cmake_cache_entry("DRAY_DIR", spec['dray'].prefix))
+        else:
+            cfg.write("# dray not built by spack \n")
 
         #######################
         # Adios

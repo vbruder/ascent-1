@@ -158,6 +158,8 @@ if(VTKM_FOUND)
         runtimes/ascent_vtkh_data_adapter.hpp
         runtimes/flow_filters/ascent_runtime_vtkh_filters.hpp
         runtimes/flow_filters/ascent_runtime_rover_filters.hpp
+        #for now, we depend on compositing
+        runtimes/flow_filters/ascent_runtime_dray_filters.hpp
 
         runtimes/flow_filters/ascent_runtime_conduit_to_vtkm_parsing.hpp
         runtimes/ascent_main_runtime.hpp)
@@ -166,6 +168,8 @@ if(VTKM_FOUND)
         runtimes/ascent_vtkh_data_adapter.cpp
         runtimes/flow_filters/ascent_runtime_vtkh_filters.cpp
         runtimes/flow_filters/ascent_runtime_rover_filters.cpp
+        #for now, we depend on compositing
+        runtimes/flow_filters/ascent_runtime_dray_filters.cpp
         runtimes/flow_filters/ascent_runtime_conduit_to_vtkm_parsing.cpp
         runtimes/ascent_main_runtime.cpp)
 
@@ -244,11 +248,11 @@ if (ENABLE_SERIAL)
         SOURCES     ${ascent_sources}
         HEADERS     ${ascent_headers}
         DEPENDS_ON  ${ascent_thirdparty_libs})
-    
+
     if(VTKM_FOUND)
         set(ascent_device_sources ${ascent_vtkh_dep_sources})
         list(APPEND ascent_device_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
-    
+
         vtkm_add_target_information(ascent DEVICE_SOURCES ${ascent_device_sources})
     endif()
     # install target for serial ascent lib

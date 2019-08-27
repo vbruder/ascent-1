@@ -116,4 +116,29 @@ if (ADIOS_DIR)
   include(cmake/thirdparty/SetupADIOS.cmake)
 endif()
 
+##################################################
+# Setup Devil Ray components
+##################################################
+
+################################
+# Setup Umpire
+################################
+if (UMPIRE_DIR)
+  include(cmake/thirdparty/SetupUmpire.cmake)
+endif()
+
+################################
+# Setup RAJA
+################################
+if (RAJA_DIR)
+  include(cmake/thirdparty/SetupRAJA.cmake)
+endif()
+
+################################
+# Setup Devil Ray
+################################
+if (DRAY_DIR)
+  include(cmake/thirdparty/SetupDevilRay.cmake)
+endif()
+
 
