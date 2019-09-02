@@ -587,6 +587,7 @@ VTKHDataAdapter::BlueprintToVTKmDataSet(const Node &node,
     }
     else if(mesh_type == "rectilinear")
     {
+        std::cout<<"RECTILINEAR \n";
         result = RectilinearBlueprintToVTKmDataSet(coords_name,
                                                    n_coords,
                                                    topo_name,
@@ -598,6 +599,7 @@ VTKHDataAdapter::BlueprintToVTKmDataSet(const Node &node,
     }
     else if(mesh_type == "structured")
     {
+        std::cout<<"STRUCTURED \n";
         result =  StructuredBlueprintToVTKmDataSet(coords_name,
                                                    n_coords,
                                                    topo_name,
@@ -608,6 +610,7 @@ VTKHDataAdapter::BlueprintToVTKmDataSet(const Node &node,
     }
     else if( mesh_type ==  "unstructured")
     {
+        std::cout<<"unstructured\n";
         result =  UnstructuredBlueprintToVTKmDataSet(coords_name,
                                                      n_coords,
                                                      topo_name,
@@ -621,6 +624,7 @@ VTKHDataAdapter::BlueprintToVTKmDataSet(const Node &node,
         ASCENT_ERROR("Unsupported topology/type:" << mesh_type);
     }
 
+    std::cout<<"Elements "<<neles<<" verts "<<nverts<<"\n";
 
     if(node.has_child("fields"))
     {
@@ -635,10 +639,12 @@ VTKHDataAdapter::BlueprintToVTKmDataSet(const Node &node,
             // skip vector fields for now, we need to add
             // more logic to AddField
             const int num_children = n_field["values"].number_of_children();
-
-            if(n_field["values"].number_of_children() == 0 )
+            std::cout<<"Children "<<num_children<<"\n";
+            n_field.schema().print();
+            if(num_children == 0 || num_children == 1)
             {
 
+                std::cout<<"scalar FIELD \n";
                 AddField(field_name,
                          n_field,
                          topo_name,
@@ -1205,9 +1211,13 @@ VTKHDataAdapter::AddField(const std::string &field_name,
       return;
     }
 
-    const Node &n_vals = n_field["values"];
+    // its perfectly fine to have either have values be inside values or the
+    // only  child of values
+    const int components = n_field["values"].number_of_children();
+    const Node &n_vals = components == 0 ? n_field["values"] : n_field["values"].child(0);
     int num_vals = n_vals.dtype().number_of_elements();
 
+    std::cout<<"num_vals "<<num_vals<<"\n";
     if(assoc_str == "vertex" && nverts != num_vals)
     {
       ASCENT_INFO("Field '"<<field_name<<"' number of values "<<num_vals<<
@@ -1864,7 +1874,6 @@ VTKHDataAdapter::VTKmToBlueprintDataSet(const vtkm::cont::DataSet *dset,
   const int default_cell_set = 0;
 
   bool is_empty = VTKmTopologyToBlueprint(node, *dset);
-
   if(!is_empty)
   {
     const vtkm::Id num_fields = dset->GetNumberOfFields();

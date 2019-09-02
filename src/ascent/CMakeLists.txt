@@ -158,9 +158,6 @@ if(VTKM_FOUND)
         runtimes/ascent_vtkh_data_adapter.hpp
         runtimes/flow_filters/ascent_runtime_vtkh_filters.hpp
         runtimes/flow_filters/ascent_runtime_rover_filters.hpp
-        #for now, we depend on compositing
-        runtimes/flow_filters/ascent_runtime_dray_filters.hpp
-
         runtimes/flow_filters/ascent_runtime_conduit_to_vtkm_parsing.hpp
         runtimes/ascent_main_runtime.hpp)
 
@@ -168,10 +165,14 @@ if(VTKM_FOUND)
         runtimes/ascent_vtkh_data_adapter.cpp
         runtimes/flow_filters/ascent_runtime_vtkh_filters.cpp
         runtimes/flow_filters/ascent_runtime_rover_filters.cpp
-        #for now, we depend on compositing
-        runtimes/flow_filters/ascent_runtime_dray_filters.cpp
         runtimes/flow_filters/ascent_runtime_conduit_to_vtkm_parsing.cpp
         runtimes/ascent_main_runtime.cpp)
+
+     if(DRAY_FOUND)
+        #for now, we depend on compositing so we need vtkh
+       list(APPEND ascent_vtkh_dep_headers runtimes/flow_filters/ascent_runtime_dray_filters.hpp)
+       list(APPEND ascent_vtkh_dep_sources runtimes/flow_filters/ascent_runtime_dray_filters.cpp)
+     endif()
 
     foreach( _itm ${ascent_vtkh_dep_headers} )
         list(APPEND ascent_headers ${_itm})
@@ -237,6 +238,11 @@ endif()
 
 if(OPENMP_FOUND)
     list(APPEND ascent_thirdparty_libs openmp)
+endif()
+
+if(DRAY_FOUND)
+    list(APPEND ascent_thirdparty_libs dray)
+    message(STATUS "USING DRAY******************************")
 endif()
 
 ##########################################
