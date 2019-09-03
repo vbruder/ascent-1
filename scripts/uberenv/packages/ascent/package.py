@@ -126,7 +126,7 @@ class Ascent(Package, CudaPackage):
 
     depends_on("adios", when="+adios")
 
-    depends_on("dray", when="+dray")
+    depends_on("dray~test", when="+dray")
 
     depends_on("raja@0.9.0+cuda~openmp", when="+dray+cuda~openmp")
     depends_on("raja@0.9.0+cuda+openmp", when="+dray+cuda+openmp")
@@ -395,8 +395,8 @@ class Ascent(Package, CudaPackage):
             mpicxx_path = spec['mpi'].mpicxx
             mpifc_path = spec['mpi'].mpifc
             # if we are using compiler wrappers on cray systems
-            # use those for mpi wrappers, b/c  spec['mpi'].mpicxx 
-            # etc make return the spack compiler wrappers 
+            # use those for mpi wrappers, b/c  spec['mpi'].mpicxx
+            # etc make return the spack compiler wrappers
             # which can trip up mpi detection in CMake 3.14
             if cpp_compiler == "CC":
                 mpicc_path = "cc"

@@ -198,11 +198,11 @@ endif()
 if(FORTRAN_FOUND)
     add_library(ascent_fortran OBJECT fortran/ascent_fortran.f90)
     list(APPEND ascent_sources $<TARGET_OBJECTS:ascent_fortran>)
-    
+
     #####################################################
     # Setup install to copy the fortran modules
     #####################################################
-    install(FILES 
+    install(FILES
             ${CMAKE_Fortran_MODULE_DIRECTORY}/ascent.mod
             DESTINATION include/ascent)
 endif()
@@ -251,7 +251,6 @@ endif()
 
 if(DRAY_FOUND)
     list(APPEND ascent_thirdparty_libs dray)
-    message(STATUS "USING DRAY******************************")
 endif()
 
 ##########################################
