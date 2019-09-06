@@ -248,8 +248,40 @@ blt_add_library(
 if(VTKM_FOUND)
     set(ascent_device_sources ${ascent_vtkh_dep_sources})
     list(APPEND ascent_device_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
-
     vtkm_add_target_information(ascent DEVICE_SOURCES ${ascent_device_sources})
+
+    set_target_properties(ascent PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+
+    set(locatoins_on_disk "")
+    set(targets_to_link rover
+                        vtkh_rendering
+                        vtkh_filters
+                        vtkh_core
+                        vtkh_lodepng
+                        vtkh_utils
+                        vtkm_worklet
+                        vtkm_cont
+                        vtkm_rendering)
+
+    foreach(item IN LISTS targets_to_link)
+      set(props_to_search IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_DEBUG)
+      foreach(prop IN LISTS props_to_search)
+        get_target_property(location ${item} ${prop})
+        if(location)
+          string(APPEND locations_on_disk "${locatons} ")
+          break()
+        endif()
+      endforeach()
+    endforeach()
+    separate_arguments(params NATIVE_COMMAND "${CMAKE_CUDA_FLAGS} ${locations_on_disk}")
+
+    add_custom_command(TARGET ascent POST_BUILD
+      COMMAND ${CMAKE_CUDA_COMPILER} --device-link $<TARGET_OBJECTS:ascent> ${params} --output-file device_link.o
+      COMMENT "manual device link step for Ascent"
+      )
+    #add the object with the resolved device symbols to any consumer of AscentProxyStatic
+    target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
+
 endif()
 # install target for serial ascent lib
 install(TARGETS ascent
