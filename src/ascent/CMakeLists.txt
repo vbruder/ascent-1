@@ -193,7 +193,16 @@ endif()
 if(FORTRAN_FOUND)
     add_library(ascent_fortran OBJECT fortran/ascent_fortran.f90)
     list(APPEND ascent_sources $<TARGET_OBJECTS:ascent_fortran>)
+
+    #####################################################
+    # Setup install to copy the fortran modules
+    #####################################################
+    install(FILES
+            ${CMAKE_Fortran_MODULE_DIRECTORY}/ascent.mod
+            DESTINATION include/ascent)
 endif()
+
+
 
 ################################
 # Add python wrappers if python
@@ -238,59 +247,96 @@ endif()
 ##########################################
 # Build a serial version of ascent
 ##########################################
+if (ENABLE_SERIAL)
 
-blt_add_library(
-    NAME        ascent
-    SOURCES     ${ascent_sources}
-    HEADERS     ${ascent_headers}
-    DEPENDS_ON  ${ascent_thirdparty_libs})
 
-if(VTKM_FOUND)
-    set(ascent_device_sources ${ascent_vtkh_dep_sources})
-    list(APPEND ascent_device_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
-    vtkm_add_target_information(ascent DEVICE_SOURCES ${ascent_device_sources})
 
-    set_target_properties(ascent PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+    if(VTKM_FOUND)
+        set(ascent_device_sources ${ascent_vtkh_dep_sources})
+        set(ascent_device_headers ${ascent_vtkh_dep_headers})
 
-    set(locatoins_on_disk "")
-    set(targets_to_link rover
-                        vtkh_rendering
-                        vtkh_filters
-                        vtkh_core
-                        vtkh_lodepng
-                        vtkh_utils
-                        vtkm_worklet
-                        vtkm_cont
-                        vtkm_rendering)
+        list(APPEND ascent_device_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
+        list(APPEND ascent_device_headers runtimes/flow_filters/ascent_runtime_blueprint_filters.hpp)
 
-    foreach(item IN LISTS targets_to_link)
-      set(props_to_search IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_DEBUG)
-      foreach(prop IN LISTS props_to_search)
-        get_target_property(location ${item} ${prop})
-        if(location)
-          string(APPEND locations_on_disk "${locatons} ")
-          break()
-        endif()
-      endforeach()
-    endforeach()
-    separate_arguments(params NATIVE_COMMAND "${CMAKE_CUDA_FLAGS} ${locations_on_disk}")
 
-    add_custom_command(TARGET ascent POST_BUILD
-      COMMAND ${CMAKE_CUDA_COMPILER} --device-link $<TARGET_OBJECTS:ascent> ${params} --output-file device_link.o
-      COMMENT "manual device link step for Ascent"
-      )
-    #add the object with the resolved device symbols to any consumer of AscentProxyStatic
-    target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
+        blt_add_library(
+            NAME        ascent_device_objects
+            SOURCES     ${ascent_device_sources}
+            HEADERS     ${ascent_device_headers}
+            DEPENDS_ON  ${ascent_thirdparty_libs}
+            OBJECT TRUE)
 
+        message(STATUS "******** ${ascent_thirdparty_libs}")
+        vtkm_add_target_information(ascent_device_objects DEVICE_SOURCES ${ascent_device_sources})
+        set_target_properties(ascent_device_objects PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+
+        set(locatoins_on_disk "")
+        set(targets_to_link rover
+                            vtkh_rendering
+                            vtkh_filters
+                            vtkh_core
+                            vtkh_lodepng
+                            vtkh_utils
+                            vtkm_worklet
+                            vtkm_cont
+                            vtkm_rendering)
+
+        foreach(item IN LISTS targets_to_link)
+          message(STATUS "looking for location of target ${item}")
+          set(props_to_search IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_DEBUG)
+          foreach(prop IN LISTS props_to_search)
+            message(STATUS "looking for prop ${prop} of target ${item}")
+            get_target_property(location ${item} ${prop})
+            if(location)
+              string(APPEND locations_on_disk "${location} ")
+              message(STATUS "LOCATION ${location}")
+              break()
+            endif()
+          endforeach()
+        endforeach()
+
+        set(binary_dir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ascent.dir")
+        #get_target_property(source_files ascent SOURCES)
+        foreach(source IN LISTS ascent_device_sources)
+          #CMake name object files "name.<ext>.o" so that it can handle multiple
+          #files with the same name but different ext in the same project
+          #if("${source}" MATCHES "cpp*")
+            string(APPEND locations_on_disk "${binary_dir}/${source}.o ")
+          #endif()
+          #message(STATUS "${source}")
+        endforeach()
+        separate_arguments(params NATIVE_COMMAND "${CMAKE_CUDA_FLAGS} ${locations_on_disk}")
+
+        add_custom_target(
+          NAME build_device_link
+          DEPENDS ascent_device_objects
+          COMMAND ${CMAKE_CUDA_COMPILER} --device-link ${params} --output-file device_link.o
+          COMMENT "manual device link step for Ascent"
+          )
+
+        add_library(device_link_object OBJECT IMPORTED GLOBAL)
+        set_target_properties(device_link_object PROPERTIES IMPORTED_OBJECTS "${CMAKE_BINARY_DIR}/device_link.o")
+        #add the object with the resolved device symbols to any consumer of AscentProxyStatic
+        #target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
+        #target_link_libraries(ascent PRIVATE "${CMAKE_BINARY_DIR}/device_link.o")
+        list(APPEND ascent_thirdparty_libs ascent_device_objects)
+        list(APPEND ascent_thirdparty_libs device_link_objects)
+      endif()
+
+    blt_add_library(
+        NAME        ascent
+        SOURCES     ${ascent_sources}
+        HEADERS     ${ascent_headers}
+        DEPENDS_ON  ${ascent_thirdparty_libs})
+
+    # install target for serial ascent lib
+    install(TARGETS ascent
+            EXPORT  ascent
+            LIBRARY DESTINATION lib
+            ARCHIVE DESTINATION lib
+            RUNTIME DESTINATION lib
+    )
 endif()
-# install target for serial ascent lib
-install(TARGETS ascent
-        EXPORT  ascent
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib
-        RUNTIME DESTINATION lib
-)
-
 
 ################################################
 # Build Parallel (MPI) version of ascent

@@ -61,6 +61,8 @@ endif()
 find_package(VTKm REQUIRED)
 
 set(VTKM_FOUND TRUE)
+#set(VTKm_INCLUDE_DIRS "${VTKM_DIR}/include")
+file(GLOB VTKm_INCLUDE_DIRS "${VTKM_DIR}/include/vtkm-*")
 message(STATUS "Found VTKm Include Dirs: ${VTKm_INCLUDE_DIRS}")
 
 set(VTKm_LIBRARIES vtkm_filter vtkm_cont vtkm_rendering)
