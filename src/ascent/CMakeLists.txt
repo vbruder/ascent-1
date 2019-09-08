@@ -249,8 +249,6 @@ endif()
 ##########################################
 if (ENABLE_SERIAL)
 
-
-
     if(VTKM_FOUND)
         set(ascent_device_sources ${ascent_vtkh_dep_sources})
         set(ascent_device_headers ${ascent_vtkh_dep_headers})
@@ -258,17 +256,24 @@ if (ENABLE_SERIAL)
         list(APPEND ascent_device_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
         list(APPEND ascent_device_headers runtimes/flow_filters/ascent_runtime_blueprint_filters.hpp)
 
+        # we use these specific vtk-m targets b/c our favorite version
+        # of cmake does not yet support transitive deps for object libs
+        set(ascent_device_deps  vtkm_compiler_flags vtkm_taotuple vtkm_diy )
+        list(APPEND ascent_device_deps ${ascent_thirdparty_libs})
 
         blt_add_library(
             NAME        ascent_device_objects
             SOURCES     ${ascent_device_sources}
             HEADERS     ${ascent_device_headers}
-            DEPENDS_ON  ${ascent_thirdparty_libs}
+            DEPENDS_ON  ${ascent_device_deps}
             OBJECT TRUE)
 
         message(STATUS "******** ${ascent_thirdparty_libs}")
+        list(APPEND ascent_thirdparty_libs ascent_device_objects)
+
         vtkm_add_target_information(ascent_device_objects DEVICE_SOURCES ${ascent_device_sources})
-        set_target_properties(ascent_device_objects PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
+
+        #set_target_properties(ascent_device_objects PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 
         set(locatoins_on_disk "")
         set(targets_to_link rover
@@ -295,8 +300,8 @@ if (ENABLE_SERIAL)
           endforeach()
         endforeach()
 
-        set(binary_dir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ascent.dir")
-        #get_target_property(source_files ascent SOURCES)
+        set(binary_dir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ascent_device_objects.dir")
+        ##get_target_property(source_files ascent SOURCES)
         foreach(source IN LISTS ascent_device_sources)
           #CMake name object files "name.<ext>.o" so that it can handle multiple
           #files with the same name but different ext in the same project
@@ -316,10 +321,9 @@ if (ENABLE_SERIAL)
 
         add_library(device_link_object OBJECT IMPORTED GLOBAL)
         set_target_properties(device_link_object PROPERTIES IMPORTED_OBJECTS "${CMAKE_BINARY_DIR}/device_link.o")
-        #add the object with the resolved device symbols to any consumer of AscentProxyStatic
-        #target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
-        #target_link_libraries(ascent PRIVATE "${CMAKE_BINARY_DIR}/device_link.o")
-        list(APPEND ascent_thirdparty_libs ascent_device_objects)
+        ##add the object with the resolved device symbols to any consumer of AscentProxyStatic
+        ##target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
+        ##target_link_libraries(ascent PRIVATE "${CMAKE_BINARY_DIR}/device_link.o")
         list(APPEND ascent_thirdparty_libs device_link_objects)
       endif()
 
