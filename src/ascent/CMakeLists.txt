@@ -160,22 +160,24 @@ if(VTKM_FOUND)
         runtimes/flow_filters/ascent_runtime_rover_filters.hpp
 
         runtimes/flow_filters/ascent_runtime_conduit_to_vtkm_parsing.hpp
-        runtimes/ascent_main_runtime.hpp)
+        #runtimes/ascent_main_runtime.hpp
+        )
 
     set(ascent_vtkh_dep_sources
         runtimes/ascent_vtkh_data_adapter.cpp
         runtimes/flow_filters/ascent_runtime_vtkh_filters.cpp
         runtimes/flow_filters/ascent_runtime_rover_filters.cpp
         runtimes/flow_filters/ascent_runtime_conduit_to_vtkm_parsing.cpp
-        runtimes/ascent_main_runtime.cpp)
+        #runtimes/ascent_main_runtime.cpp
+        )
 
-    foreach( _itm ${ascent_vtkh_dep_headers} )
-        list(APPEND ascent_headers ${_itm})
-    endforeach()
-
-    foreach( _itm ${ascent_vtkh_dep_sources} )
-        list(APPEND ascent_sources ${_itm})
-    endforeach()
+      #    foreach( _itm ${ascent_vtkh_dep_headers} )
+      #        list(APPEND ascent_headers ${_itm})
+      #    endforeach()
+      #
+      #    foreach( _itm ${ascent_vtkh_dep_sources} )
+      #        list(APPEND ascent_sources ${_itm})
+      #    endforeach()
 
 endif()
 
@@ -256,6 +258,9 @@ if (ENABLE_SERIAL)
         list(APPEND ascent_device_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
         list(APPEND ascent_device_headers runtimes/flow_filters/ascent_runtime_blueprint_filters.hpp)
 
+        list(REMOVE_ITEM ascent_sources runtimes/flow_filters/ascent_runtime_blueprint_filters.cpp)
+        list(REMOVE_ITEM ascent_headers runtimes/flow_filters/ascent_runtime_blueprint_filters.hpp)
+
         # we use these specific vtk-m targets b/c our favorite version
         # of cmake does not yet support transitive deps for object libs
         set(ascent_device_deps  vtkm_compiler_flags vtkm_taotuple vtkm_diy )
@@ -321,10 +326,11 @@ if (ENABLE_SERIAL)
 
         add_library(device_link_object OBJECT IMPORTED GLOBAL)
         set_target_properties(device_link_object PROPERTIES IMPORTED_OBJECTS "${CMAKE_BINARY_DIR}/device_link.o")
+        add_dependencies(device_link_object build_device_link)
         ##add the object with the resolved device symbols to any consumer of AscentProxyStatic
         ##target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
         ##target_link_libraries(ascent PRIVATE "${CMAKE_BINARY_DIR}/device_link.o")
-        list(APPEND ascent_thirdparty_libs device_link_objects)
+        list(APPEND ascent_thirdparty_libs device_link_object)
       endif()
 
     blt_add_library(
