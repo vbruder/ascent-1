@@ -280,7 +280,7 @@ if (ENABLE_SERIAL)
 
         #set_target_properties(ascent_device_objects PROPERTIES CUDA_RESOLVE_DEVICE_SYMBOLS ON)
 
-        set(locatoins_on_disk "")
+        set(locations_on_disk "")
         set(targets_to_link rover
                             vtkh_rendering
                             vtkh_filters
@@ -293,7 +293,17 @@ if (ENABLE_SERIAL)
 
         foreach(item IN LISTS targets_to_link)
           message(STATUS "looking for location of target ${item}")
-          set(props_to_search IMPORTED_LOCATION IMPORTED_LOCATION_RELEASE IMPORTED_LOCATION_MINSIZEREL IMPORTED_LOCATION_DEBUG)
+          # also look for LOCATION, since rover isn't an imported
+          set(props_to_search IMPORTED_LOCATION 
+                              IMPORTED_LOCATION_RELEASE
+                              IMPORTED_LOCATION_MINSIZEREL
+                              IMPORTED_LOCATION_DEBUG)
+          # also tried to look for LOCATION, since rover isn't an imported
+          # doesn't work 
+                              #LOCATION 
+                              #LOCATION_RELEASE
+                              #LOCATION_MINSIZEREL
+                              #LOCATION_DEBUG)
           foreach(prop IN LISTS props_to_search)
             message(STATUS "looking for prop ${prop} of target ${item}")
             get_target_property(location ${item} ${prop})
@@ -304,6 +314,9 @@ if (ENABLE_SERIAL)
             endif()
           endforeach()
         endforeach()
+
+        #hack in rover for now
+        string(APPEND locations_on_disk "${CMAKE_BINARY_DIR}/lib/librover.a ")
 
         set(binary_dir "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/ascent_device_objects.dir")
         ##get_target_property(source_files ascent SOURCES)
@@ -317,20 +330,30 @@ if (ENABLE_SERIAL)
         endforeach()
         separate_arguments(params NATIVE_COMMAND "${CMAKE_CUDA_FLAGS} ${locations_on_disk}")
 
-        add_custom_target(
-          NAME build_device_link
-          DEPENDS ascent_device_objects
+        add_custom_command(
+          OUTPUT device_link.o
+          DEPENDS ascent_device_objects rover
           COMMAND ${CMAKE_CUDA_COMPILER} --device-link ${params} --output-file device_link.o
           COMMENT "manual device link step for Ascent"
           )
 
-        add_library(device_link_object OBJECT IMPORTED GLOBAL)
-        set_target_properties(device_link_object PROPERTIES IMPORTED_OBJECTS "${CMAKE_BINARY_DIR}/device_link.o")
-        add_dependencies(device_link_object build_device_link)
+        add_custom_target(
+          build_device_link ALL
+          DEPENDS device_link.o
+          )
+
+        #add_library(device_link_object OBJECT IMPORTED GLOBAL)
+        #set_target_properties(device_link_object PROPERTIES IMPORTED_OBJECTS "device_link.o")
+        #add_dependencies(device_link_object build_device_link)
         ##add the object with the resolved device symbols to any consumer of AscentProxyStatic
         ##target_link_options(ascent INTERFACE "${CMAKE_BINARY_DIR}/device_link.o")
-        ##target_link_libraries(ascent PRIVATE "${CMAKE_BINARY_DIR}/device_link.o")
-        list(APPEND ascent_thirdparty_libs device_link_object)
+        #target_link_libraries(ascent PRIVATE "${CMAKE_BINARY_DIR}/device_link.o")
+        #list(APPEND ascent_thirdparty_libs device_link_object)
+        #
+        #list(APPEND ascent_sources "$<TARGET_OBJECTS:device_link_object>")
+        #list(APPEND ascent_thirdparty_libs build_device_link)
+        list(APPEND ascent_sources device_link.o)
+
       endif()
 
     blt_add_library(
@@ -338,6 +361,8 @@ if (ENABLE_SERIAL)
         SOURCES     ${ascent_sources}
         HEADERS     ${ascent_headers}
         DEPENDS_ON  ${ascent_thirdparty_libs})
+
+    add_dependencies(ascent build_device_link)
 
     # install target for serial ascent lib
     install(TARGETS ascent
