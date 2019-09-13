@@ -21,7 +21,7 @@ class Vtkm(CMakePackage, CudaPackage):
     git      = "https://gitlab.kitware.com/vtk/vtk-m.git"
 
     # version used for ascent
-    version('ascent_ver', commit='41ac138d6d918ff4fe0bf8ca253e4fb5bfb07698', preferred=True)
+    version('ascent_ver', commit='23b73103e0ea242f1d9b3e7116410d1c6c832d38', preferred=True)
     version('master', branch='master')
     version('1.3.0', "d9f6e274dec2ea01273cccaba356d23ca88c5a25")
     version('1.2.0', "3295fed86012226c107e1f2605ca7cc583586b63")
