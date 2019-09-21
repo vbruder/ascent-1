@@ -38,7 +38,7 @@ class Vtkh(Package,CudaPackage):
     maintainers = ['cyrush']
 
 
-    version('ascent_ver', commit='a8a851940a26c916d5d3a50fdbadb7ad8f21da96', submodules=True, preferred=True)
+    version('ascent_ver', commit='b8504989173666e009d9ceb37a690b8284e42146', submodules=True, preferred=True)
     version('develop', branch='develop', submodules=True)
     version('0.1.0', branch='develop', tag='v0.1.0', submodules=True)
 

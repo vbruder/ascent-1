@@ -369,6 +369,67 @@ public:
 };
 
 //-----------------------------------------------------------------------------
+class VTKHHistSampling : public ::flow::Filter
+{
+public:
+    VTKHHistSampling();
+    virtual ~VTKHHistSampling();
+
+    virtual void   declare_interface(conduit::Node &i);
+    virtual bool   verify_params(const conduit::Node &params,
+                                 conduit::Node &info);
+    virtual void   execute();
+};
+
+class VTKHQCriterion: public ::flow::Filter
+{
+public:
+    VTKHQCriterion();
+    virtual ~VTKHQCriterion();
+
+    virtual void   declare_interface(conduit::Node &i);
+    virtual bool   verify_params(const conduit::Node &params,
+                                 conduit::Node &info);
+    virtual void   execute();
+};
+
+class VTKHDivergence: public ::flow::Filter
+{
+public:
+    VTKHDivergence();
+    virtual ~VTKHDivergence();
+
+    virtual void   declare_interface(conduit::Node &i);
+    virtual bool   verify_params(const conduit::Node &params,
+                                 conduit::Node &info);
+    virtual void   execute();
+};
+
+class VTKHVorticity: public ::flow::Filter
+{
+public:
+    VTKHVorticity();
+    virtual ~VTKHVorticity();
+
+    virtual void   declare_interface(conduit::Node &i);
+    virtual bool   verify_params(const conduit::Node &params,
+                                 conduit::Node &info);
+    virtual void   execute();
+};
+
+class VTKHGradient : public ::flow::Filter
+{
+public:
+    VTKHGradient();
+    virtual ~VTKHGradient();
+
+    virtual void   declare_interface(conduit::Node &i);
+    virtual bool   verify_params(const conduit::Node &params,
+                                 conduit::Node &info);
+    virtual void   execute();
+};
+
+//-----------------------------------------------------------------------------
 class VTKHNoOp : public ::flow::Filter
 {
 public:

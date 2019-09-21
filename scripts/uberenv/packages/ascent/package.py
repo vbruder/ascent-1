@@ -118,11 +118,11 @@ class Ascent(Package, CudaPackage):
     depends_on("vtkh@ascent_ver~shared+cuda~openmp", when="~shared+vtkh+cuda~openmp")
 
     # mfem
-    depends_on("mfem+shared+mpi+conduit+threadsafe", when="+shared+mfem+mpi")
-    depends_on("mfem~shared+mpi+conduit+threadsafe", when="~shared+mfem+mpi")
+    depends_on("mfem+threadsafe+shared+mpi+conduit", when="+shared+mfem+mpi")
+    depends_on("mfem+threadsafe~shared+mpi+conduit", when="~shared+mfem+mpi")
 
-    depends_on("mfem+shared~mpi+conduit+threadsafe", when="+shared+mfem~mpi")
-    depends_on("mfem~shared~mpi+conduit+threadsafe", when="~shared+mfem~mpi")
+    depends_on("mfem+threadsafe+shared~mpi+conduit", when="+shared+mfem~mpi")
+    depends_on("mfem+threadsafe~shared~mpi+conduit", when="~shared+mfem~mpi")
 
     depends_on("adios", when="+adios")
 
