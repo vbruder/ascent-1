@@ -340,7 +340,7 @@ DRayMesh::execute()
     bool draw_mesh = false;
     if(params().has_path("draw_mesh"))
     {
-      if(params()["draw_mesh"].as_string() == "true")
+      if(params()["draw_mesh"].as_string() == "on")
       {
         draw_mesh = true;
       }
@@ -428,13 +428,29 @@ DRayMesh::execute()
                           height);
     }
 
+    conduit::Node * meta = graph().workspace().registry().fetch<Node>("metadata");
+
+    int cycle = 0;
+
+    if(meta->has_path("cycle"))
+    {
+      cycle = (*meta)["cycle"].as_int32();
+    }
+
+    std::string image_name = "dray_%06d";
+    if(params().has_path("image_prefix"))
+    {
+      image_name = params()["image_prefix"].as_string();
+    }
+    image_name = expand_family_name(image_name, cycle);
+
     vtkh::Image result = compositor.Composite();
 
     if(vtkh::GetMPIRank() == 0)
     {
       PNGEncoder encoder;
       encoder.Encode(&result.m_pixels[0], width, height);
-      encoder.Save("dray.png");
+      encoder.Save(image_name + ".png");
     }
 }
 

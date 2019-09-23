@@ -13,5 +13,5 @@ set(DRAY_FOUND TRUE)
 
 blt_register_library(NAME dray
                      INCLUDES ${DRAY_INCLUDE_DIRS}
-                     LIBRARIES dray lodepng)
+                     LIBRARIES dray dray_lodepng)
 
