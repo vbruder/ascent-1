@@ -63,6 +63,7 @@
 #include <algorithm>
 #include <ostream>
 #include <iterator>
+#include <memory>
 
 #include <thread>
 #include <deque>
@@ -263,8 +264,6 @@ struct RenderConfig
     int non_probing_count = 0;
     int batch_count = 1;
 
-    // TODO: Adapt batch_count to align with probing size so that first render is always probing,
-    //       this would avoid batch size 1 issues.
     const static int WIDTH = 800;
     const static int HEIGHT = 800;
     const static int CHANNELS = 4 + 4; // RGBA + depth (float)
@@ -324,17 +323,21 @@ struct RenderBatch
 };
 
 
-struct NodeConfig
+class NodeConfig
 {
-    // TODO: move all my_ vars here
-    // my_vis_rank
-    // my_render_recv_cnt
-    // my_data_recv_cnt
+public:
+    int skipped_render = false;
 
-    // my_sim_estimate
-    // my_probing_times
-    // my_avg_probing_time
-    // my_data_size
+    size_t data_size = 0;
+
+    float t_sim = 0.f;
+    float t_probing_avg = 0.f;
+    float render_overhead = 0.f;
+
+    // vis node specific
+    int vis_rank = -1;
+    int render_recv_cnt = 0;
+    int data_recv_cnt = 0;
 };
 
 
@@ -351,7 +354,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
 {
     // optional render factors for sim and/or vis nodes (empirically determined)
     const float sim_factor = 1.0f;       // 1.24;
-    const float vis_factor = 1.2f;       // 0.97;       // 0.9317 for n33, 1.0069 for n10
+    const float vis_factor = 1.0f;       // 0.97;       // 0.9317 for n33, 1.0069 for n10
 
     assert(sim_estimate.size() == vis_estimates.size());
     
@@ -360,7 +363,12 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         t_inline[i] = vis_estimates[i] * sim_factor * render_cfg.non_probing_count;
 
     // TODO: add smarter way to estimate compositing cost
-    const float t_compositing = (skipped_renders*0.02f + (1.f-skipped_renders)*0.16f) * render_cfg.max_count;  // assume flat cost per image
+    // factores determined on stampede2 with 2/10 and 6/33 nodes 
+    const float t_compose = 0.1f + 0.03f * mpi_props.vis_node_count;
+    const float t_compose_skipped = 0.01f * mpi_props.vis_node_count;
+    // estimate with average compositing cost
+    const float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose)
+                                 * render_cfg.max_count;
     if (mpi_props.rank == 0)
         std::cout << "~~compositing estimate: " << t_compositing << std::endl;
     // data send overhead
@@ -967,9 +975,9 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                         const std::vector<int> &src_ranks,
                         const std::vector<int> &depth_id_order, 
                         const std::map<int, int> &recv_counts,
-                        const int my_vis_rank, 
-                        const int my_render_recv_cnt, const int my_data_recv_cnt,
-                        const RenderConfig &render_cfg, const MPI_Properties &mpi_props,
+                        const NodeConfig &my_cfg,
+                        const RenderConfig &render_cfg, 
+                        const MPI_Properties &mpi_props,
                         const MPI_Comm active_vis_comm)
 {
     auto t_start0 = std::chrono::system_clock::now();
@@ -983,8 +991,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
             unpack_node(*p, *parts_probing.back());
     }
     // sender / batches
-    vec_vec_node_sptr parts_sim(my_render_recv_cnt);
-    for (int i = 0; i < my_render_recv_cnt; ++i)
+    vec_vec_node_sptr parts_sim(my_cfg.render_recv_cnt);
+    for (int i = 0; i < my_cfg.render_recv_cnt; ++i)
     {
         for (auto const& batch : render_chunks_sim[i])
         {
@@ -993,8 +1001,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
         }
     }
     
-    // std::vector<RenderBatch> batches(my_render_recv_cnt);
-    std::vector<std::vector<int> > sim_batch_sizes(my_render_recv_cnt);
+    // std::vector<RenderBatch> batches(my_cfg.render_recv_cnt);
+    std::vector<std::vector<int> > sim_batch_sizes(my_cfg.render_recv_cnt);
     for (int i = 0; i < sim_batch_sizes.size(); ++i)
     {
         sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);
@@ -1004,19 +1012,19 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     std::cout << "~~~~arrange render order " << mpi_props.rank << std::endl;
 
     // arrange render order   
-    vector<int> probing_enum_sim(my_data_recv_cnt, 0);  // TODO: test hybrid
-    vector<int> probing_enum_vis(my_data_recv_cnt, 0);
+    vector<int> probing_enum_sim(my_cfg.data_recv_cnt, 0);
+    vector<int> probing_enum_vis(my_cfg.data_recv_cnt, 0);
     // images / sender / values
     vec_vec_node_sptr render_ptrs(render_cfg.max_count);
     std::vector<std::vector<int> > render_arrangement(render_cfg.max_count);
 
     for (int j = 0; j < render_cfg.max_count; ++j)
     {
-        render_ptrs[j].reserve(my_data_recv_cnt);
-        render_arrangement[j].reserve(my_data_recv_cnt);
+        render_ptrs[j].reserve(my_cfg.data_recv_cnt);
+        render_arrangement[j].reserve(my_cfg.data_recv_cnt);
 
         // std::cout << "\nimage " << j << std::endl;
-        for (int i = 0; i < my_data_recv_cnt; ++i)
+        for (int i = 0; i < my_cfg.data_recv_cnt; ++i)
         {
             // std::cout << "  " << i << " " << probing_enum_sim[i];
             if (render_cfg.probing_stride && (j % render_cfg.probing_stride == 0)) // probing image
@@ -1117,7 +1125,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     std::condition_variable cond;
     std::deque<std::pair<vtkh::Image *, std::string> > buffer;
     std::vector<std::thread> consumers(thread_count);
-    if (my_vis_rank == 0)
+    if (my_cfg.vis_rank == 0)
     {
         for (int i = 0; i < consumers.size(); ++i)
             consumers[i] = std::thread(&image_consumer, std::ref(mu), std::ref(cond), std::ref(buffer));
@@ -1203,7 +1211,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
         // print_time(t_start, "end composite ", mpi_props.rank);
 
         // save render using separate thread to hide latency
-        if (my_vis_rank == 0 && image_cnt)
+        if (my_cfg.vis_rank == 0 && image_cnt)
         {
             assert(render_arrangement[j].size() > 0);
             std::string name = (*render_ptrs[j][0])["render_file_names"].child(render_arrangement[j][0]).as_string();
@@ -1239,7 +1247,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     log_global_time("end compositing", mpi_props.rank);
 }
 
-// TODO: fix
+// TODO: fix to move the color buffer copy (atm: conversion in vtk-h)
 void convert_color_buffer(Node &data)
 {
     int size = 800*800*4;
@@ -1298,14 +1306,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
     
     auto start0 = std::chrono::system_clock::now();
 
-    bool is_vis_node = false;
-    int my_vis_rank = -1;
+    NodeConfig my_cfg;
 
-    float my_avg_probing_time = 0.f;
-    float my_render_overhead = 0.f;
-    int skipped_render = 0;
-    float my_sim_estimate = data["state/sim_time"].to_float();
-    std::cout << mpi_props.rank << " ~ sim time estimate: " << my_sim_estimate << std::endl;
+    my_cfg.t_sim = data["state/sim_time"].to_float();
+    std::cout << mpi_props.rank << " ~ sim time estimate: " << my_cfg.t_sim << std::endl;
 
     Node data_packed;
     pack_node(data, data_packed);
@@ -1313,10 +1317,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
     if (mpi_props.rank >= mpi_props.sim_node_count) // nodes with the highest ranks are vis nodes
     {
-        is_vis_node = true;
-        my_vis_rank = mpi_props.rank - mpi_props.sim_node_count;
-        my_sim_estimate = 0.f;
-        my_data_size = 0;
+        my_cfg.vis_rank = mpi_props.rank - mpi_props.sim_node_count;
     }
     else if (mpi_props.size > 1) // otherwise this is a sim node
     {
@@ -1324,44 +1325,40 @@ void hybrid_render(const MPI_Properties &mpi_props,
                                                   my_probing_times.end(), 0.0);
         sum_render_times = std::isnan(sum_render_times) ? 0.0 : sum_render_times;
 
-        if (my_probing_times.size() == 0)
+        if (my_probing_times.size() != 0)
         {
-            my_avg_probing_time = 0.f;
-        }
-        else
-        {
-            my_avg_probing_time = float(sum_render_times / my_probing_times.size());
-            my_avg_probing_time /= 1000.f; // convert to seconds
+            my_cfg.t_probing_avg = float(sum_render_times / my_probing_times.size());
+            my_cfg.t_probing_avg /= 1000.f; // convert to seconds
         }
 
         bool use_total_time = true;
-        if (my_avg_probing_time > 0.f && use_total_time)
+        if (my_cfg.t_probing_avg > 0.f && use_total_time)
         {
-            my_avg_probing_time = total_probing_time;
+            my_cfg.t_probing_avg = total_probing_time;
             if (render_cfg.probing_count)
-                my_avg_probing_time /= render_cfg.probing_count;
+                my_cfg.t_probing_avg /= render_cfg.probing_count;
         }
 
         // if probing time is close to zero, add overhead costs
-        // if (my_avg_probing_time < 0.f + std::numeric_limits<float>::min())
-        //     my_avg_probing_time = total_probing_time / render_cfg.probing_count / 1.f;
+        // if (my_cfg.t_probing_avg < 0.f + std::numeric_limits<float>::min())
+        //     my_cfg.t_probing_avg = total_probing_time / render_cfg.probing_count / 1.f;
 
         // std::cout << "+++ probing times ";
         // for (auto &a : my_probing_times)
         //     std::cout << a << " ";
         std::cout << "probing w/o overhead " << sum_render_times/1000.0 << std::endl;
         std::cout << "probing w/  overhead " << total_probing_time << std::endl;
-        my_render_overhead = total_probing_time - sum_render_times/1000.0;
-        // my_render_overhead *= render_cfg.batch_count;
+        my_cfg.render_overhead = total_probing_time - sum_render_times/1000.0;
+        // my_cfg.render_overhead *= render_cfg.batch_count;
 
         std::cout << mpi_props.rank << " ~ vis time estimate (per render): " 
-                  << my_avg_probing_time << std::endl;
+                  << my_cfg.t_probing_avg << std::endl;
 
         if (render_cfg.insitu_type == "hybrid")
         {
-            skipped_render = 1;
+            my_cfg.skipped_render = 1;
             if (render_chunks_probing.has_child("render_file_names")) //images")) 
-                skipped_render = 0; // false
+                my_cfg.skipped_render = 0; // false
         }
     }
     log_global_time("end packData", mpi_props.rank);
@@ -1372,21 +1369,21 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
     // gather all simulation time estimates
     std::vector<float> g_sim_estimates(mpi_props.size, 0.f);
-    MPI_Allgather(&my_sim_estimate, 1, MPI_FLOAT, 
+    MPI_Allgather(&my_cfg.t_sim, 1, MPI_FLOAT, 
                   g_sim_estimates.data(), 1, MPI_FLOAT, mpi_props.comm_world);
     // gather all visualization time estimates
     std::vector<float> g_vis_estimates(mpi_props.size, 0.f);
-    MPI_Allgather(&my_avg_probing_time, 1, MPI_FLOAT, 
+    MPI_Allgather(&my_cfg.t_probing_avg, 1, MPI_FLOAT, 
                   g_vis_estimates.data(), 1, MPI_FLOAT, mpi_props.comm_world);
     // and render overhead
     std::vector<float> g_vis_overhead(mpi_props.size, 0.f);
-    MPI_Allgather(&my_render_overhead, 1, MPI_FLOAT, 
+    MPI_Allgather(&my_cfg.render_overhead, 1, MPI_FLOAT, 
                   g_vis_overhead.data(), 1, MPI_FLOAT, mpi_props.comm_world);
     // determine how many nodes skipped rendering due to empty block
     std::vector<int> g_skipped(mpi_props.size, 0);
-    MPI_Allgather(&skipped_render, 1, MPI_INT, g_skipped.data(), 1, MPI_INT, mpi_props.comm_world);
+    MPI_Allgather(&my_cfg.skipped_render, 1, MPI_INT, g_skipped.data(), 1, MPI_INT, mpi_props.comm_world);
     const float skipped_renders = std::accumulate(g_skipped.begin(), g_skipped.end(), 0)
-                                    / float(mpi_props.sim_node_count);
+                                        / float(mpi_props.sim_node_count);
 
     // NOTE: use maximum sim time for all nodes
     const float max_sim_time = *std::max_element(g_sim_estimates.begin(), g_sim_estimates.end());
@@ -1416,7 +1413,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
     // gather all data set sizes for async recv
     std::vector<int> g_data_sizes(mpi_props.size, 0);
-    MPI_Allgather(&my_data_size, 1, MPI_INT, g_data_sizes.data(), 1, MPI_INT, mpi_props.comm_world);
+    MPI_Allgather(&my_cfg.data_size, 1, MPI_INT, g_data_sizes.data(), 1, MPI_INT, mpi_props.comm_world);
     
     // mpi message tags
     const int TAG_DATA = 0;
@@ -1434,18 +1431,18 @@ void hybrid_render(const MPI_Properties &mpi_props,
     log_time(start1, "- load distribution ", mpi_props.rank);
     log_global_time("end loadAssignment", mpi_props.rank);
 
-    if (is_vis_node) // vis nodes 
+    if (my_cfg.vis_rank >= 0) // vis nodes 
     {
         // find all sim nodes sending data to this vis node
         std::vector<int> sending_node_ranks;
         for (int i = 0; i < mpi_props.sim_node_count; ++i)
         {
-            if (node_map[i] == my_vis_rank)
+            if (node_map[i] == my_cfg.vis_rank)
                 sending_node_ranks.push_back(i);
         }
-        const int my_data_recv_cnt = int(sending_node_ranks.size());
+        my_cfg.data_recv_cnt = int(sending_node_ranks.size());
         // count of nodes that do inline rendering (0 for intransit case)
-        const int my_render_recv_cnt = render_cfg.insitu_type == "intransit" ? 0 : my_data_recv_cnt;
+        my_cfg.render_recv_cnt = render_cfg.insitu_type == "intransit" ? 0 : my_cfg.data_recv_cnt;
         std::map<int, int> recv_counts;
         for (const auto &n : node_map)
             ++recv_counts[n];
@@ -1474,11 +1471,11 @@ void hybrid_render(const MPI_Properties &mpi_props,
                   << node_string.str() << std::endl;
 
         const std::vector<int> src_ranks = sending_node_ranks;
-        std::vector<std::unique_ptr<Node> > datasets(my_data_recv_cnt);
+        std::vector<std::unique_ptr<Node> > datasets(my_cfg.data_recv_cnt);
 
         // post recv for datasets
-        std::vector<MPI_Request> requests_data(my_data_recv_cnt, MPI_REQUEST_NULL);
-        for (int i = 0; i < my_data_recv_cnt; ++i)
+        std::vector<MPI_Request> requests_data(my_cfg.data_recv_cnt, MPI_REQUEST_NULL);
+        for (int i = 0; i < my_cfg.data_recv_cnt; ++i)
         {
             datasets[i] = make_unique<Node>(DataType::uint8(g_data_sizes[src_ranks[i]]));
 
@@ -1497,8 +1494,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
         }
 
         // every associated sim node sends n batches of renders to this vis node
-        // std::vector<RenderBatch> batches(my_render_recv_cnt);
-        std::vector<std::vector<int> > sim_batch_sizes(my_render_recv_cnt);
+        // std::vector<RenderBatch> batches(my_cfg.render_recv_cnt);
+        std::vector<std::vector<int> > sim_batch_sizes(my_cfg.render_recv_cnt);
 
         for (int i = 0; i < sim_batch_sizes.size(); ++i)
         {
@@ -1510,15 +1507,15 @@ void hybrid_render(const MPI_Properties &mpi_props,
         }
 
         // probing chunks
-        vec_node_uptr render_chunks_probe(my_render_recv_cnt);
-        std::vector<MPI_Request> requests_probing(my_render_recv_cnt, MPI_REQUEST_NULL);
+        vec_node_uptr render_chunks_probe(my_cfg.render_recv_cnt);
+        std::vector<MPI_Request> requests_probing(my_cfg.render_recv_cnt, MPI_REQUEST_NULL);
         // render chunks sim
         // senders / batches / renders
-        vec_vec_node_uptr render_chunks_sim(my_render_recv_cnt);
-        std::vector< std::vector<MPI_Request>> requests_inline_sim(my_render_recv_cnt);
+        vec_vec_node_uptr render_chunks_sim(my_cfg.render_recv_cnt);
+        std::vector< std::vector<MPI_Request>> requests_inline_sim(my_cfg.render_recv_cnt);
 
         // pre-allocate the mpi receive buffers
-        for (int i = 0; i < my_render_recv_cnt; i++)
+        for (int i = 0; i < my_cfg.render_recv_cnt; i++)
         {   
             int buffer_size = 0;
             if (g_skipped[src_ranks[i]])
@@ -1544,7 +1541,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
         }
 
         // post the receives for the render chunks to receive asynchronous (non-blocking)
-        for (int i = 0; i < my_render_recv_cnt; ++i)
+        for (int i = 0; i < my_cfg.render_recv_cnt; ++i)
         {
             if (!g_skipped[src_ranks[i]])
             {
@@ -1581,10 +1578,11 @@ void hybrid_render(const MPI_Properties &mpi_props,
             }
         }
 
+        // TODO: only receive non skipped data
         // wait for all data sets to arrive
         // NOTE: if we use waitany an then render in between waiting for the next dataset, 
         // we stall the remaining sim nodes until the rendering on this vis node is finished
-        for (int i = 0; i < my_data_recv_cnt; ++i)
+        for (int i = 0; i < my_cfg.data_recv_cnt; ++i)
         {
             int id = -1;
             auto start1 = std::chrono::system_clock::now();
@@ -1594,11 +1592,11 @@ void hybrid_render(const MPI_Properties &mpi_props,
         log_global_time("end receiveData", mpi_props.rank);
 
         // render all data sets
-        std::vector<Ascent> ascent_renders(my_data_recv_cnt);
-        vec_node_sptr render_chunks_vis(my_data_recv_cnt, nullptr);
+        std::vector<Ascent> ascent_renders(my_cfg.data_recv_cnt);
+        vec_node_sptr render_chunks_vis(my_cfg.data_recv_cnt, nullptr);
         std::vector<std::thread> threads;
 
-        for (int i = 0; i < my_data_recv_cnt; ++i)
+        for (int i = 0; i < my_cfg.data_recv_cnt; ++i)
         {
             // std::cout << "=== dataset size " << mpi_props.rank << " from " << src_ranks[i] << " "
             //           << datasets[i]->total_bytes_compact() << std::endl;
@@ -1704,15 +1702,14 @@ void hybrid_render(const MPI_Properties &mpi_props,
         MPI_Comm active_vis_comm;
         MPI_Comm_create_group(mpi_props.comm_vis, active_vis_group, 2, &active_vis_comm);
 
-        if (active_nodes[my_vis_rank])
+        if (active_nodes[my_cfg.vis_rank])
         {
             hybrid_compositing(render_chunks_probe, render_chunks_sim, render_chunks_vis, 
-                               g_render_counts, src_ranks, depth_id_order, recv_counts, my_vis_rank,
-                               my_render_recv_cnt, my_data_recv_cnt, render_cfg, 
-                               mpi_props, active_vis_comm);
+                               g_render_counts, src_ranks, depth_id_order, recv_counts, my_cfg,
+                               render_cfg, mpi_props, active_vis_comm);
 
             // Keep the vis node ascent instances open until render chunks have been processed.
-            for (int i = 0; i < my_data_recv_cnt; i++)
+            for (int i = 0; i < my_cfg.data_recv_cnt; i++)
                 ascent_renders[i].close();  
         }
 
@@ -1765,7 +1762,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             MPI_Request request_probing = MPI_REQUEST_NULL;
             // pack and send probing renders in separate thread
             std::thread pack_probing_thread;
-            if (!skipped_render)
+            if (!my_cfg.skipped_render)
                 pack_probing_thread = std::thread(&pack_and_send, std::ref(render_chunks_probing), 
                                                   destination, TAG_PROBING, mpi_props.comm_world, 
                                                   std::ref(request_probing));
@@ -1860,7 +1857,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 t_start = std::chrono::system_clock::now();
                 // MPI_Wait(&request_data, MPI_STATUS_IGNORE);
                 // probing
-                if (!skipped_render)
+                if (!my_cfg.skipped_render)
                 {
                     if (pack_probing_thread.joinable())
                         pack_probing_thread.join();
