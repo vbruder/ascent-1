@@ -297,6 +297,13 @@ void AscentRuntime::Initialize(const conduit::Node &options)
     runtime::expressions::ExpressionEval::load_cache(m_default_output_dir,
                                                      m_session_name);
 
+    // standard flow filters
+    flow::filters::register_builtin();
+    // filters for ascent flow runtime.
+    runtime::filters::register_builtin();
+    // filters for expression evaluation
+    runtime::expressions::register_builtin();
+
     if(options.has_path("web/stream") &&
        options["web/stream"].as_string() == "true" &&
        m_rank == 0)
@@ -339,7 +346,7 @@ void AscentRuntime::Initialize(const conduit::Node &options)
 //-----------------------------------------------------------------------------
 void AscentRuntime::Info(conduit::Node &out)
 {
-  // out.set(m_info);
+  // out.set(m_info);       // avoid copy
   out.set_external(m_info);
 }
 
@@ -1595,10 +1602,50 @@ void AscentRuntime::Execute(const conduit::Node &actions)
 #if defined(ASCENT_VTKM_ENABLED)
         vtkh::DataLogger::GetInstance()->CloseLogEntry();
 #endif
-        Node msg;
-        this->Info(msg["info"]);
-        ascent::about(msg["about"]);
-        m_web_interface.PushMessage(msg);
+        // Node msg;
+        // this->Info(msg["info"]);
+        // ascent::about(msg["about"]);
+        // m_web_interface.PushMessage(msg);
+
+        Node *images;
+        if (w.registry().has_entry("image_list"))
+        {
+          images = w.registry().fetch<Node>("image_list");
+          // m_info["images"].set_external(*images);
+        }
+        else
+        {
+          std::cout << "No image list." << std::endl;
+          return;
+        }
+
+        const int size = images->number_of_children();
+
+        std::cout << "_ascent main: number of images " << size << std::endl;
+        // Note: this copy costs ~1.5 seconds -> avoid it (only needed for interactive web interface?)
+        // Node image_params = *images;
+        // m_info["images"].set_external(image_params);
+
+        for (int i = 0; i < size; i++)
+        {
+          m_info["render_file_names"].append();
+          m_info["render_times"].append();
+          m_info["depths"].append();
+
+          m_info["color_buffers"].append();
+          m_info["depth_buffers"].append();
+        }
+
+      #pragma omp parallel for
+        for (int i = 0; i < size; i++)
+        {
+          m_info["render_file_names"][i].set_external(images->child(i)["image_name"]);
+          m_info["render_times"][i].set_external(images->child(i)["render_time"]);
+          m_info["depths"][i].set_external(images->child(i)["depth"]);
+
+          m_info["color_buffers"][i].set_external(images->child(i)["color_buffer"]);
+          m_info["depth_buffers"][i].set_external(images->child(i)["depth_buffer"]);
+        }
 
         //Node render_file_names;
         //Node renders;

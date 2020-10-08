@@ -59,6 +59,8 @@
 #include <conduit_relay.hpp>
 #include <conduit_blueprint.hpp>
 
+#include <vtkh/utils/vtkm_array_utils.hpp>
+
 //-----------------------------------------------------------------------------
 // ascent includes
 //-----------------------------------------------------------------------------
@@ -93,6 +95,7 @@
 #endif
 
 #include <stdio.h>
+#include <thread>
 
 using namespace conduit;
 using namespace std;
@@ -247,6 +250,13 @@ class AscentScene
 {
 protected:
   int m_renderer_count;
+
+  std::vector<std::vector<double> > m_render_times; // render times per renderer
+  // color buffer per render per renderer
+  std::vector<std::vector<std::vector<unsigned char> > > m_color_buffers;
+  // distance camera position to data center per render per renderer
+  std::vector<std::vector<float> > m_depths;
+
   flow::Registry *m_registry;
   AscentScene() {};
 public:
@@ -259,6 +269,38 @@ public:
   ~AscentScene()
   {}
 
+  std::vector<std::vector<double> > *GetRenderTimes()
+  {
+    return &m_render_times;
+  }
+
+  // return color buffers of all renders of selected renderer 
+  std::vector<std::vector<unsigned char>> *GetColorBuffers(int rendererId)
+  {
+    if(rendererId >= m_renderer_count)
+      ASCENT_ERROR("Trying to access data of non-existend renderer.");
+    if (m_color_buffers.size() <= rendererId)
+      return nullptr;
+
+    return &m_color_buffers.at(rendererId);
+  }
+
+  // return depth of all renders of selected renderer 
+  std::vector<float> *GetDepths(int rendererId)
+  {
+    if(rendererId >= m_renderer_count)
+      ASCENT_ERROR("Trying to access data of non-existend renderer.");
+    if (m_depths.size() <= rendererId)
+      return nullptr;
+
+    return &m_depths.at(rendererId);
+  }
+  
+  int GetRendererCount()
+  {
+    return m_renderer_count;
+  }
+
   void AddRenderer(RendererContainer *container)
   {
     ostringstream oss;
@@ -268,7 +310,7 @@ public:
     m_renderer_count++;
   }
 
-  void Execute(std::vector<vtkh::Render> &renders)
+  void Execute(std::vector<vtkh::Render> &renders, bool is_inline = false, int sleep = 0)
   {
     vtkh::Scene scene;
     for(int i = 0; i < m_renderer_count; i++)
@@ -285,15 +327,58 @@ public:
       scene.AddRender(renders[i]);
     }
 
-    scene.Render();
+    scene.Render(is_inline);
+    std::chrono::duration<double> t_img_data;
 
     for(int i=0; i < m_renderer_count; i++)
     {
-        ostringstream oss;
-        oss << "key_" << i;
-        m_registry->consume(oss.str());
+      int rank = 0;
+#ifdef ASCENT_MPI_ENABLED
+      MPI_Comm mpi_comm = MPI_Comm_f2c(Workspace::default_mpi_comm());
+      MPI_Comm_rank(mpi_comm, &rank);
+#endif
+      // artificial load imbalance
+      if (sleep)
+      {
+        // std::cout << "sleep " << sleep << std::endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleep*renders.size()));
+      }
+
+      ostringstream oss;
+      oss << "key_" << i;
+
+      if (!is_inline)
+      {
+        // auto start = std::chrono::system_clock::now();
+
+        vtkh::Renderer *r = m_registry->fetch<RendererContainer>(oss.str())->Fetch();
+        int size = renders.at(i).GetWidth() * renders.at(i).GetHeight();
+
+        // move render buffers and data from vtkh to ascent
+        // NOTE: only getting canvas from domain 0 for now
+        // NOTE: move costs < 0.2 seconds per node per batch (200-400 renders)
+        m_render_times.push_back(std::move(r->GetRenderTimes()));
+        m_color_buffers.push_back(std::move(r->GetColorBuffers()));
+        m_depths.push_back(std::move(r->GetDepths()));
+
+        // t_img_data += std::chrono::system_clock::now() - start;
+      }
+      // std::cout << "** copy from vtkh " << t_img_data.count()  << " rank " << rank << std::endl;
+
+      // m_registry->consume(oss.str());
     }
   }
+
+  void ConsumeRenderers()
+  {
+    for (int i = 0; i < m_renderer_count; i++)
+    {
+      ostringstream oss;
+      oss << "key_" << i;
+      m_registry->consume(oss.str());
+    }
+  }
+
 }; // Ascent Scene
 
 //-----------------------------------------------------------------------------
@@ -1352,6 +1437,107 @@ CreateScene::execute()
     set_output<detail::AscentScene>(scene);
 }
 
+
+void add_images(std::vector<vtkh::Render> *renders, 
+                flow::Graph *graph, 
+                const std::vector<std::vector<double> > *scene_render_times,
+                std::vector<std::vector<unsigned char> > *color_buffers,
+                std::vector<float> *depths)
+{
+  // check if anything was rendered
+  if (color_buffers->size() == 0)
+  {
+    std::cout << "no image to add." << std::endl;
+    return;
+  }
+
+  if (!graph->workspace().registry().has_entry("image_list"))
+  {
+    conduit::Node *image_list = new conduit::Node();
+    graph->workspace().registry().add<Node>("image_list", image_list, 1);
+  }
+  conduit::Node *image_list = graph->workspace().registry().fetch<Node>("image_list");
+
+  auto start = std::chrono::system_clock::now();
+
+  std::vector<conduit::Node> image_data(renders->size());
+
+  for (int i = 0; i < renders->size(); ++i)
+    image_list->append();
+
+#pragma omp parallel for
+  for (int i = 0; i < renders->size(); ++i)
+  {
+    const std::string image_name = renders->at(i).GetImageName() + ".png";
+
+    image_data.at(i)["image_name"] = image_name;
+    image_data[i]["image_width"] = renders->at(i).GetWidth();
+    image_data[i]["image_height"] = renders->at(i).GetHeight();
+
+    image_data[i]["camera/position"].set(&renders->at(i).GetCamera().GetPosition()[0], 3);
+    image_data[i]["camera/look_at"].set(&renders->at(i).GetCamera().GetLookAt()[0], 3);
+    image_data[i]["camera/up"].set(&renders->at(i).GetCamera().GetViewUp()[0], 3);
+    image_data[i]["camera/zoom"] = renders->at(i).GetCamera().GetZoom();
+    image_data[i]["camera/fov"] = renders->at(i).GetCamera().GetFieldOfView();
+    vtkm::Bounds bounds = renders->at(i).GetSceneBounds();
+    double coord_bounds[6] = {bounds.X.Min,
+                              bounds.Y.Min,
+                              bounds.Z.Min,
+                              bounds.X.Max,
+                              bounds.Y.Max,
+                              bounds.Z.Max};
+    image_data[i]["scene_bounds"].set(coord_bounds, 6);
+
+    double avg_render_time = 0.0;
+    int count = 0;
+    // loop over renderers
+    for (size_t j = 0; j < scene_render_times->size(); ++j)
+    {
+      // NOTE: average over render times for now
+      if (scene_render_times->at(j).size() > i)
+      {
+        avg_render_time += scene_render_times->at(j).at(i);
+        ++count;
+      }
+    }
+
+    avg_render_time /= count ? double(count) : 1.0;
+    image_data[i]["render_time"] = avg_render_time;
+
+    int size = renders->at(i).GetWidth() * renders->at(i).GetHeight();
+    // NOTE: only getting canvas from domain 0 for now
+    image_data[i]["color_buffer"].set_external(color_buffers->at(i).data(), size * 4); // *4 for RGBA
+
+    // image_data[i]["depth_buffer"].set_external(depth_buffers->at(i).data(), size);
+    image_data[i]["depth"] = depths->at(i);
+
+    // TODO: copy: big performance hit -> avoid copy of color buffer and move uchar conversion
+    // set_external is way faster (no copy) but results in empty packed messages (png write)
+    // image_list->child(i).set_external(image_data[i]);
+
+    // Node &image = image_list->append();
+    // image.set(std::move(image_data[i]));
+
+    image_list->child(i).set(std::move(image_data[i]));
+
+    float* depth_buffer = vtkh::GetVTKMPointer(renders->at(i).GetCanvas().GetDepthBuffer());
+    image_list->child(i)["depth_buffer"].set_external(depth_buffer, size);
+    // float* color_buffer = &vtkh::GetVTKMPointer(renders->at(i).GetCanvas()->GetColorBuffer())[0][0];
+    // image_list->child(i)["color_buffer"].set_external(color_buffer, size * 4);
+    
+    // image_list->append() = image_data;
+
+    // append name and frame time to ascent info
+    // conduit::Node image_info;
+    // image_info["image_name"] = image_name;
+    // image_info["render_times"] = render_times;
+    // info["renders"].append() = image_info;
+  } // for renders
+
+  std::chrono::duration<double> t_buffers = std::chrono::system_clock::now() - start;
+}
+
+
 //-----------------------------------------------------------------------------
 ExecScene::ExecScene()
   : Filter()
@@ -1391,44 +1577,62 @@ ExecScene::execute()
 
     detail::AscentScene *scene = input<detail::AscentScene>(0);
     std::vector<vtkh::Render> * renders = input<std::vector<vtkh::Render>>(1);
-    scene->Execute(*renders);
+
+    bool is_inline = false;
+    Node *meta = graph().workspace().registry().fetch<Node>("metadata");
+    if (meta->has_path("insitu_type"))
+      is_inline = (*meta)["insitu_type"].as_string() == "inline";
+    int sleep = 0;
+    if (meta->has_path("sleep"))
+      sleep = (*meta)["sleep"].as_int32();
+
+    scene->Execute(*renders, is_inline, sleep);
+
+    std::vector<std::vector<double> > *render_times = scene->GetRenderTimes();
+    // NOTE: only domain 0 for now
+    std::vector<std::vector<unsigned char> > *color_buffers = scene->GetColorBuffers(0);
+    std::vector<float> *depths = scene->GetDepths(0);
+
+    if (!is_inline)
+      add_images(renders, &graph(), render_times, color_buffers, depths);
 
     // the images should exist now so add them to the image list
     // this can be used for the web server or jupyter
 
-    if(!graph().workspace().registry().has_entry("image_list"))
-    {
-      conduit::Node *image_list = new conduit::Node();
-      graph().workspace().registry().add<Node>("image_list", image_list,1);
-    }
+    // if(!graph().workspace().registry().has_entry("image_list"))
+    // {
+    //   conduit::Node *image_list = new conduit::Node();
+    //   graph().workspace().registry().add<Node>("image_list", image_list,1);
+    // }
 
-    conduit::Node *image_list = graph().workspace().registry().fetch<Node>("image_list");
-    for(int i = 0; i < renders->size(); ++i)
-    {
-      const std::string image_name = renders->at(i).GetImageName() + ".png";
-      conduit::Node image_data;
-      image_data["image_name"] = image_name;
-      image_data["image_width"] = renders->at(i).GetWidth();
-      image_data["image_height"] = renders->at(i).GetHeight();
+    // conduit::Node *image_list = graph().workspace().registry().fetch<Node>("image_list");
+    // for(int i = 0; i < renders->size(); ++i)
+    // {
+    //   const std::string image_name = renders->at(i).GetImageName() + ".png";
+    //   conduit::Node image_data;
+    //   image_data["image_name"] = image_name;
+    //   image_data["image_width"] = renders->at(i).GetWidth();
+    //   image_data["image_height"] = renders->at(i).GetHeight();
 
-      image_data["camera/position"].set(&renders->at(i).GetCamera().GetPosition()[0],3);
-      image_data["camera/look_at"].set(&renders->at(i).GetCamera().GetLookAt()[0],3);
-      image_data["camera/up"].set(&renders->at(i).GetCamera().GetViewUp()[0],3);
-      image_data["camera/zoom"] = renders->at(i).GetCamera().GetZoom();
-      image_data["camera/fov"] = renders->at(i).GetCamera().GetFieldOfView();
-      vtkm::Bounds bounds=  renders->at(i).GetSceneBounds();
-      double coord_bounds [6] = {bounds.X.Min,
-                                 bounds.Y.Min,
-                                 bounds.Z.Min,
-                                 bounds.X.Max,
-                                 bounds.Y.Max,
-                                 bounds.Z.Max};
+    //   image_data["camera/position"].set(&renders->at(i).GetCamera().GetPosition()[0],3);
+    //   image_data["camera/look_at"].set(&renders->at(i).GetCamera().GetLookAt()[0],3);
+    //   image_data["camera/up"].set(&renders->at(i).GetCamera().GetViewUp()[0],3);
+    //   image_data["camera/zoom"] = renders->at(i).GetCamera().GetZoom();
+    //   image_data["camera/fov"] = renders->at(i).GetCamera().GetFieldOfView();
+    //   vtkm::Bounds bounds=  renders->at(i).GetSceneBounds();
+    //   double coord_bounds [6] = {bounds.X.Min,
+    //                              bounds.Y.Min,
+    //                              bounds.Z.Min,
+    //                              bounds.X.Max,
+    //                              bounds.Y.Max,
+    //                              bounds.Z.Max};
 
-      image_data["scene_bounds"].set(coord_bounds, 6);
+    //   image_data["scene_bounds"].set(coord_bounds, 6);
 
-      image_list->append() = image_data;
-    }
+    //   image_list->append() = image_data;
+    // }
 
+    scene->ConsumeRenderers();
 }
 //-----------------------------------------------------------------------------
 

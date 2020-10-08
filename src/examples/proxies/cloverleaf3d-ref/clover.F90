@@ -97,7 +97,7 @@ END SUBROUTINE clover_finalize
 
 SUBROUTINE clover_init_comms
 
-  USE parse_module, except_this_one => clover_init_comms
+  ! USE parse_module, except_this_one => clover_init_comms
 
   IMPLICIT NONE
 
@@ -136,24 +136,25 @@ SUBROUTINE clover_init_comms
   ! rank_split = ANINT(size*0.8) ! number of sim nodes: 3/4 * # nodes
 
   ! parse clover.in for sim_nodes_only indicator
-  in=get_unit(dummy)
-  OPEN(FILE='clover.in',ACTION='READ',STATUS='OLD',UNIT=in,IOSTAT=ios)
-  stat=parse_init(in,'*clover')
-  DO
-    stat=parse_getline(dummy)
-    IF (stat.ne.0) exit
-    DO
-      word=parse_getword(.FALSE.)
-      IF(word.EQ.'')EXIT
-      IF (word.EQ.'sim_nodes_only') THEN
-        sim_nodes_only=.TRUE.
-        EXIT
-      ENDIF
-    ENDDO
-  ENDDO
-  CLOSE(in)
+  ! in=get_unit(dummy)
+  ! OPEN(FILE='clover.in',ACTION='READ',STATUS='OLD',UNIT=in,IOSTAT=ios)
+  ! stat=parse_init(in,'*clover')
+  ! DO
+  !   stat=parse_getline(dummy)
+  !   IF (stat.ne.0) exit
+  !   DO
+  !     word=parse_getword(.FALSE.)
+  !     IF(word.EQ.'')EXIT
+  !     IF (word.EQ.'sim_nodes_only') THEN
+  !       sim_nodes_only=.TRUE.
+  !       EXIT
+  !     ENDIF
+  !   ENDDO
+  ! ENDDO
+  ! CLOSE(in)
 
-  IF (sim_nodes_only) THEN
+  ! IF (sim_nodes_only) THEN
+  IF (.FALSE.) THEN
     rank_split = size
   END IF
 
