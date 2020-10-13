@@ -324,7 +324,7 @@ void AscentRuntime::Initialize(const conduit::Node &options)
   {
     m_is_probing = options["is_probing"].as_int32();
     m_probing_factor = options["probing_factor"].as_double();
-    // std::cout << "*** probing" << std::endl;
+    std::cout << "*** probing" << std::endl;
   }
   if (options.has_path("render_count"))
     m_render_count = options["render_count"].as_int32();
@@ -1665,7 +1665,7 @@ void AscentRuntime::Execute(const conduit::Node &actions)
 
         //m_web_interface.PushRenders(render_file_names);
 
-        w.registry().reset();
+        // w.registry().reset();
     }
     // --- close try --- //
 

@@ -790,18 +790,13 @@ void detach_mpi_buffer()
 /**
  * Calculate the message size for sending the render chunks.
  */
-int calc_render_msg_size(const int render_count, const int probing_count,
-                         const int width = 800, const int height = 800,
+int calc_render_msg_size(const int render_count, const int width = 800, const int height = 800,
                          const int channels = 4+4)
 {
-
-
-    const int total_renders = render_count - probing_count;
-
     const int overhead_render = 396 + 512;    // TODO: add correct bytes for name
     const int overhead_global = 288;
-    return total_renders * channels * width * height +
-           total_renders * overhead_render + overhead_global;
+    return render_count * channels * width * height +
+           render_count * overhead_render + overhead_global;
 }
 
 std::vector<int> get_batch_sizes(const int render_count, const RenderConfig render_cfg,
@@ -842,19 +837,6 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
     return batch_sizes;
 }
 
-// RenderBatch get_batch(const int render_count, const int batch_count)
-// {
-//     RenderBatch b;
-//     if (render_count == 0 || batch_count == 0)
-//         return b;
-
-//     b.runs = std::max(1, batch_count); //int(std::ceil(render_count / double(batch_size)));
-//     b.size = int(std::round(float(render_count)/float(b.runs)));
-//     // last run may have less renders than the other batches
-//     b.rest = render_count % b.size;
-
-//     return b;
-// }
 
 int get_current_batch_size(const RenderBatch batch, const int iteration)
 {
@@ -863,47 +845,6 @@ int get_current_batch_size(const RenderBatch batch, const int iteration)
         current_batch_size = batch.rest;
     return current_batch_size;
 }
-
-// void post_irecv_renders(std::vector< std::vector< std::vector<int>>> &renders,
-//                         std::vector<MPI_Request> &requests,
-//                         std::vector<RenderBatch> &batches,
-//                         const vector<int> &src_ranks,
-//                         const int sending_count,
-//                         MPI_Comm comm,
-//                         int probing_count,
-//                         double probing_factor
-//                        )
-// {
-//     for (int i = 0; i < sending_count; ++i)
-//     {
-//         for (int j = 0; j < batches[i].runs; ++j)
-//         {
-//             // correct size for last iteration
-//             const int current_batch_size = get_current_batch_size(batches[i], j);
-//             // (j == batches[i].runs - 1) ? batches[i].rest : batch_size;
-//             // std::cout << " ~~~ current_batch_size " << world_rank  << " batch size " << current_batch_size
-//             //         << std::endl;
-//             if (current_batch_size == 0)
-//                 break;
-
-//             const int buffer_size = calc_render_msg_size(current_batch_size, probing_factor);
-
-//             // Node n_buffer(DataType::uint8(buffer_size));
-//             std::vector<int> buffer(buffer_size);
-//             renders[i].push_back(buffer);
-//             int mpi_error = MPI_Irecv(renders[i].back().data(),
-//                                         buffer_size,
-//                                         MPI_INT,
-//                                         src_ranks[i],
-//                                         j+1,
-//                                         comm,
-//                                         &requests[i]
-//                                         );
-//             if (mpi_error)
-//                 std::cout << "ERROR receiving dataset from " << src_ranks[i] << std::endl;
-//         }
-//     }
-// }
 
 /**
  * Make a unique pointer (for backward compatability, native since c++14).
@@ -1558,7 +1499,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             }
             else
             {
-                buffer_size = calc_render_msg_size(render_cfg.probing_count, 0);
+                buffer_size = calc_render_msg_size(render_cfg.probing_count);
                 render_chunks_probe[i] = make_unique<Node>(DataType::uint8(buffer_size));
             }
 
@@ -1567,7 +1508,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
             for (int j = 0; j < sim_batch_sizes[i].size(); ++j)
             {
-                buffer_size = calc_render_msg_size(sim_batch_sizes[i][j], 0); // render_cfg.probing_factor);
+                buffer_size = calc_render_msg_size(sim_batch_sizes[i][j]); // render_cfg.probing_factor);
                 render_chunks_sim[i][j] = make_unique<Node>(DataType::uint8(buffer_size));
                 // std::cout << sim_batch_sizes[i][j] << " expected render_msg_size "
                 //           << buffer_size << std::endl;
@@ -1762,13 +1703,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
             {   // init send buffer
                 detach_mpi_buffer();
 
-                const index_t msg_size_render = calc_render_msg_size(g_render_counts[mpi_props.rank], 0);
-                const index_t msg_size_probing = calc_render_msg_size(render_cfg.probing_count, 0);
+                const index_t msg_size_render = calc_render_msg_size(g_render_counts[mpi_props.rank]);
+                const index_t msg_size_probing = calc_render_msg_size(render_cfg.probing_count);
                 const int overhead = MPI_BSEND_OVERHEAD * (batch_sizes.size() + 1); // 1 probing batch
                 const int total_size = msg_size_render + msg_size_probing + overhead;
 
                 MPI_Buffer_attach(malloc(total_size), total_size);
-                // std::cout << mpi_props.rank << " -- buffer size: " << total_size << std::endl;
+                std::cout << mpi_props.rank << " -- buffer size: " << total_size << std::endl;
             }
 
             // MPI_Request request_data = MPI_REQUEST_NULL;
@@ -1797,9 +1738,11 @@ void hybrid_render(const MPI_Properties &mpi_props,
             // pack and send probing renders in separate thread
             std::thread pack_probing_thread;
             if (!skipped_render)
+            {
                 pack_probing_thread = std::thread(&pack_and_send, std::ref(render_chunks_probing),
                                                   destination, TAG_PROBING, mpi_props.comm_world,
                                                   std::ref(request_probing));
+            }
 
             log_global_time("end sendData", mpi_props.rank);
 

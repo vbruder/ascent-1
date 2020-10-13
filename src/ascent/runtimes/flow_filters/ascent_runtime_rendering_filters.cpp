@@ -535,14 +535,19 @@ public:
     }
   }
 
-  void add_time_step()
+  void add_time_step(bool is_intransit = false)
   {
     m_times.push_back(m_time);
 
     int rank = 0;
 #ifdef ASCENT_MPI_ENABLED
+    int size = 0;
     MPI_Comm mpi_comm = MPI_Comm_f2c(Workspace::default_mpi_comm());
     MPI_Comm_rank(mpi_comm, &rank);
+    MPI_Comm_size(mpi_comm, &size);
+    // use last rank to generate dir for in transit only case
+    if (is_intransit && rank == size - 1)
+      rank = 0;
 #endif
     if(rank == 0 && !conduit::utils::is_directory(m_base_path))
     {
@@ -576,7 +581,11 @@ public:
   }
 
   void fill_renders(std::vector<vtkh::Render> *renders,
-                    const conduit::Node &render_node)
+                    const conduit::Node &render_node,
+                    const int current_render_count,
+                    const int render_offset,
+                    const int stride,
+                    const bool is_probing)
   {
     conduit::Node render_copy = render_node;
 
@@ -598,10 +607,20 @@ public:
     vtkh::Render render = detail::parse_render(render_copy,
                                                m_bounds,
                                                tmp_name);
-    const int num_renders = m_image_names.size();
+    int num_renders = m_image_names.size();
 
-    for(int i = 0; i < num_renders; ++i)
+    // adjust render count
+    if (current_render_count > 0)
+      num_renders = current_render_count;
+
+    for (int i = render_offset; i < render_offset + num_renders; )
     {
+      if (!is_probing && (stride > 1) && (i % stride == 0))
+      {
+        ++i;
+        continue; // skip render, already rendered while probing
+      }
+
       std::string image_name = conduit::utils::join_file_path(m_image_path , m_image_names[i]);
 
       render.SetImageName(image_name);
@@ -618,6 +637,11 @@ public:
 
       render.SetCamera(camera);
       renders->push_back(render);
+
+      if (is_probing)
+        i += stride;  // skip to next probing image
+      else
+        ++i;
     }
   }
 
@@ -939,25 +963,66 @@ DefaultRender::execute()
 
         if(is_cinema)
         {
-          if(!render_node.has_path("phi") || !render_node.has_path("theta"))
-          {
-            ASCENT_ERROR("Cinema must have 'phi' and 'theta'");
-          }
-          int phi = render_node["phi"].to_int32();
-          int theta = render_node["theta"].to_int32();
+          int phi = 5;
+          int theta = 5;
+          if (render_node.has_path("phi"))
+            phi = render_node["phi"].to_int32();
+          if (render_node.has_path("theta"))
+            theta = render_node["theta"].to_int32();
 
-          if(!render_node.has_path("db_name"))
+          const int full_render_count = phi*theta;
+          int current_render_count = full_render_count;
+          int render_offset = 0;
+          
+          if (meta->has_path("render_count"))
           {
-            ASCENT_ERROR("Cinema must specify a 'db_name'");
+            if ((*meta)["render_count"].as_int32() > 0)
+            {
+              current_render_count = (*meta)["render_count"].as_int32();
+            }
           }
+          if (meta->has_path("render_offset"))
+          {
+            render_offset = (*meta)["render_offset"].as_int32();
+          }
+
+          // check if probing run
+          double probing_factor = 1.0;
+          int stride = 1;
+          bool is_probing = false;
+          if (meta->has_path("is_probing") && meta->has_path("probing_factor"))
+          {
+            probing_factor = (*meta)["probing_factor"].as_double();
+            if (probing_factor > 0.0)
+            {
+              stride = int(std::round(full_render_count / (probing_factor*full_render_count)));
+              if ((*meta)["is_probing"].as_int32())
+                is_probing = true;
+            }
+          }
+          bool is_cinema_increment = false;
+          if (meta->has_path("cinema_increment"))
+            is_cinema_increment = (*meta)["cinema_increment"].as_int32();
+          std::string insitu_type;
+          if (meta->has_path("insitu_type"))
+            insitu_type = (*meta)["insitu_type"].as_string();
 
           std::string output_path = default_dir(graph());
-
-          if(!render_node.has_path("db_name"))
+          if (render_node.has_path("output_path"))
           {
-            ASCENT_ERROR("Cinema must specify a 'db_name'");
+            output_path = render_node["output_path"].as_string();
           }
-          std::string db_name = render_node["db_name"].as_string();
+
+          std::string db_name = "cinema_db";
+          if (render_node.has_path("db_name"))
+          {
+            db_name = render_node["db_name"].as_string();
+          }
+          else
+          {
+            ASCENT_INFO("No cinema 'db_name' specified, defaulting to 'cinema_db'.");
+          }
+
           bool exists = detail::CinemaDatabases::db_exists(db_name);
           if(!exists)
           {
@@ -970,8 +1035,13 @@ DefaultRender::execute()
           parse_image_dims(render_node, image_width, image_height);
 
           manager.set_bounds(*bounds);
-          manager.add_time_step();
-          manager.fill_renders(renders, render_node);
+          // Add new timestep only for probing run, otherwise we generate too many.
+          if (is_probing || (!is_probing && is_cinema_increment)) 
+          {
+            manager.add_time_step(insitu_type == "intransit");
+          }
+          manager.fill_renders(renders, render_node, current_render_count, render_offset, 
+                               stride, is_probing);
           manager.write_metadata();
         }
 
