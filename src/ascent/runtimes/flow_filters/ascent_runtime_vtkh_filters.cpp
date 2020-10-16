@@ -839,6 +839,7 @@ VTKHGhostStripper::execute()
       // and add the result of this operation
       VTKHCollection *new_coll = collection->copy_without_topology(topo_name);
       new_coll->add(*stripper_output, topo_name);
+
       // re wrap in data object
       DataObject *res =  new DataObject(new_coll);
       delete stripper_output;
@@ -1686,7 +1687,6 @@ VTKHRecenter::execute()
     std::string topo_name = collection->field_topology(field_name);
 
     vtkh::DataSet &data = collection->dataset_by_topology(topo_name);
-
 
     std::string association = params()["association"].as_string();
     if(association != "vertex" && association != "element")

@@ -188,14 +188,15 @@ void AscentRuntime::Initialize(const conduit::Node &options)
   flow::Workspace::set_default_mpi_comm(options["mpi_comm"].to_int());
 #if defined(ASCENT_VTKM_ENABLED)
   vtkh::SetMPICommHandle(options["mpi_comm"].to_int());
-  // vtkh::SetMPICommHandle(sim_vis_comm);
-  // std::cout << ">>>>MPI size:" << vtkh::GetMPISize() << std::endl;
 #endif
 #if defined(ASCENT_DRAY_ENABLED)
     dray::dray::mpi_comm(options["mpi_comm"].to_int());
 #endif
-  MPI_Comm comm = MPI_Comm_f2c(options["mpi_comm"].to_int());
-  MPI_Comm_rank(comm, &m_rank);
+  if (options["mpi_comm"].to_int() != MPI_COMM_NULL)
+  {
+    MPI_Comm comm = MPI_Comm_f2c(options["mpi_comm"].to_int());
+    MPI_Comm_rank(comm, &m_rank);
+  }
   InfoHandler::m_rank = m_rank;
 #else // non mpi version
   if (options.has_child("mpi_comm"))
@@ -324,7 +325,7 @@ void AscentRuntime::Initialize(const conduit::Node &options)
   {
     m_is_probing = options["is_probing"].as_int32();
     m_probing_factor = options["probing_factor"].as_double();
-    std::cout << "*** probing" << std::endl;
+    // std::cout << "*** probing" << std::endl;
   }
   if (options.has_path("render_count"))
     m_render_count = options["render_count"].as_int32();
@@ -419,39 +420,39 @@ void AscentRuntime::EnsureDomainIds()
     }
 
 
-#ifdef ASCENT_MPI_ENABLED
-    int comm_id = flow::Workspace::default_mpi_comm();
+// #ifdef ASCENT_MPI_ENABLED
+//     int comm_id = flow::Workspace::default_mpi_comm();
 
-    MPI_Comm mpi_comm = MPI_Comm_f2c(comm_id);
+//     MPI_Comm mpi_comm = MPI_Comm_f2c(comm_id);
 
-    int comm_size = 1;
-    MPI_Comm_size(mpi_comm, &comm_size);
-    int *has_ids_array = new int[comm_size];
-    int *no_ids_array = new int[comm_size];
-    int boolean = has_ids ? 1 : 0;
+//     int comm_size = 1;
+//     MPI_Comm_size(mpi_comm, &comm_size);
+//     int *has_ids_array = new int[comm_size];
+//     int *no_ids_array = new int[comm_size];
+//     int boolean = has_ids ? 1 : 0;
 
-    MPI_Allgather(&boolean, 1, MPI_INT, has_ids_array, 1, MPI_INT, mpi_comm);
-    boolean = no_ids ? 1 : 0;
-    MPI_Allgather(&boolean, 1, MPI_INT, no_ids_array, 1, MPI_INT, mpi_comm);
+//     MPI_Allgather(&boolean, 1, MPI_INT, has_ids_array, 1, MPI_INT, mpi_comm);
+//     boolean = no_ids ? 1 : 0;
+//     MPI_Allgather(&boolean, 1, MPI_INT, no_ids_array, 1, MPI_INT, mpi_comm);
 
-    bool global_has_ids = true;
-    bool global_no_ids = false;
-    for(int i = 0; i < comm_size; ++i)
-    {
-      if(has_ids_array[i] == 0)
-      {
-        global_has_ids = false;
-      }
-      if(no_ids_array[i] == 1)
-      {
-        global_no_ids = true;
-      }
-    }
-    has_ids = global_has_ids;
-    no_ids = global_no_ids;
-    delete[] has_ids_array;
-    delete[] no_ids_array;
-#endif
+//     bool global_has_ids = true;
+//     bool global_no_ids = false;
+//     for(int i = 0; i < comm_size; ++i)
+//     {
+//       if(has_ids_array[i] == 0)
+//       {
+//         global_has_ids = false;
+//       }
+//       if(no_ids_array[i] == 1)
+//       {
+//         global_no_ids = true;
+//       }
+//     }
+//     has_ids = global_has_ids;
+//     no_ids = global_no_ids;
+//     delete[] has_ids_array;
+//     delete[] no_ids_array;
+// #endif
 
     bool consistent_ids = (has_ids || no_ids);
     if(!consistent_ids)
@@ -461,15 +462,15 @@ void AscentRuntime::EnsureDomainIds()
     }
 
     int domain_offset = 0;
-#ifdef ASCENT_MPI_ENABLED
-    int *domains_per_rank = new int[comm_size];
-    MPI_Allgather(&num_domains, 1, MPI_INT, domains_per_rank, 1, MPI_INT, mpi_comm);
-    for(int i = 0; i < m_rank; ++i)
-    {
-      domain_offset += domains_per_rank[i];
-    }
-    delete[] domains_per_rank;
-#endif
+// #ifdef ASCENT_MPI_ENABLED
+//     int *domains_per_rank = new int[comm_size];
+//     MPI_Allgather(&num_domains, 1, MPI_INT, domains_per_rank, 1, MPI_INT, mpi_comm);
+//     for(int i = 0; i < m_rank; ++i)
+//     {
+//       domain_offset += domains_per_rank[i];
+//     }
+//     delete[] domains_per_rank;
+// #endif
     for(int i = 0; i < num_domains; ++i)
     {
       conduit::Node &dom = m_source.child(i);
@@ -1082,7 +1083,6 @@ void AscentRuntime::PopulateMetadata()
   (*meta)["insitu_type"] = m_insitu_type;
   (*meta)["cinema_increment"] = m_is_cinema_increment;
   (*meta)["sleep"] = m_sleep;
-  (*meta)["ghost_field"] = m_ghost_fields;
   (*meta)["default_dir"] = m_default_output_dir;
 
 }
@@ -1621,7 +1621,7 @@ void AscentRuntime::Execute(const conduit::Node &actions)
 
         const int size = images->number_of_children();
 
-        std::cout << "_ascent main: number of images " << size << std::endl;
+        // std::cout << "_ascent main: number of images " << size << std::endl;
         // Note: this copy costs ~1.5 seconds -> avoid it (only needed for interactive web interface?)
         // Node image_params = *images;
         // m_info["images"].set_external(image_params);
@@ -1976,7 +1976,6 @@ void AscentRuntime::VerifyGhosts()
     }
   }
   m_ghost_fields = verified;
-
 }
 
 

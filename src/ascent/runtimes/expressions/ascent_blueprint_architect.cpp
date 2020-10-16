@@ -683,7 +683,8 @@ has_field(const conduit::Node &dataset, const std::string &field_name)
     }
   }
   // check to see if the field exists in any rank
-  has_field = detail::at_least_one(has_field);
+  // TODO: skipped to avoid MPI sync 
+  // has_field = detail::at_least_one(has_field);
   return has_field;
 }
 

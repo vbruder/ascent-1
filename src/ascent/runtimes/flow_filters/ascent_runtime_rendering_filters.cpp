@@ -321,6 +321,8 @@ public:
       scene.AddRenderer(r);
     }
 
+    std::cout << "fetch " << std::endl;
+
     size_t num_renders = renders.size();
     for(size_t i = 0; i < num_renders; ++i)
     {
@@ -1135,9 +1137,18 @@ VTKHBounds::execute()
     }
 
     DataObject *data_object = input<DataObject>(0);
-    std::shared_ptr<VTKHCollection> collection = data_object->as_vtkh_collection();
+    // std::shared_ptr<VTKHCollection> collection = data_object->as_vtkh_collection();
 
-    bounds->Include(collection->global_bounds());
+    // bounds->Include(collection->global_bounds());
+
+    // TODO: calculate bounds w/o global sync
+    bounds->X.Min =  0.0;
+    bounds->X.Max = 10.0;
+    bounds->Y.Min =  0.0;
+    bounds->Y.Max = 10.0;
+    bounds->Z.Min =  0.0;
+    bounds->Z.Max = 10.0;
+
     set_output<vtkm::Bounds>(bounds);
 }
 
@@ -1356,11 +1367,12 @@ CreatePlot::execute()
 
     std::string type = params()["type"].as_string();
 
-    if(data.GlobalIsEmpty())
-    {
-      std::string fpath = filter_to_path(this->name());
-      ASCENT_INFO(fpath<<" "<<type<<" plot yielded no data, i.e., no cells remain");
-    }
+    // TODO: avoid global check
+    // if(data.GlobalIsEmpty())
+    // {
+    //   std::string fpath = filter_to_path(this->name());
+    //   ASCENT_INFO(fpath<<" "<<type<<" plot yielded no data, i.e., no cells remain");
+    // }
 
     vtkh::Renderer *renderer = nullptr;
 

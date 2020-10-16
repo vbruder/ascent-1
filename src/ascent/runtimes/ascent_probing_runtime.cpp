@@ -1395,6 +1395,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
     const int TAG_PROBING = TAG_DATA + 1;
     const int TAG_INLINE = TAG_PROBING + 1;
 
+    std::cout << "+++ MPI Comm world: " << MPI_Comm_c2f(mpi_props.comm_world) << std::endl;
+
     // common options for both sim and vis nodes
     Node ascent_opts, blank_actions;
     ascent_opts["mpi_comm"] = MPI_Comm_c2f(mpi_props.comm_world);
@@ -1594,6 +1596,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                                 << render_offset << " - "
                                 << render_offset + current_render_count << std::endl;
 
+                    ascent_opts["mpi_comm"] = MPI_Comm_c2f(mpi_props.comm_world);
                     ascent_opts["render_count"] = current_render_count;
                     ascent_opts["render_offset"] = render_offset;
                     ascent_opts["cinema_increment"] = (i == 0) ? true : false;
@@ -1687,7 +1690,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
             for (int i = 0; i < my_data_recv_cnt; i++)
                 ascent_renders[i].close();
         }
-
     } // end vis node
     else // SIM nodes
     {
@@ -1709,7 +1711,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 const int total_size = msg_size_render + msg_size_probing + overhead;
 
                 MPI_Buffer_attach(malloc(total_size), total_size);
-                std::cout << mpi_props.rank << " -- buffer size: " << total_size << std::endl;
+                // std::cout << mpi_props.rank << " -- buffer size: " << total_size << std::endl;
             }
 
             // MPI_Request request_data = MPI_REQUEST_NULL;

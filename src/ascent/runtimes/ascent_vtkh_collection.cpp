@@ -140,36 +140,36 @@ std::string VTKHCollection::field_topology(const std::string field_name) {
       break;
     }
   }
-#if defined(ASCENT_MPI_ENABLED)
-  // if the topology does not exist on this rank,
-  // but exists somewhere, we need to figure out what
-  // that name is for all ranks so all ranks
-  // can run the same code at the same time, avoiding deadlock
-  int rank;
-  MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
-  MPI_Comm_rank(mpi_comm, &rank);
+// #if defined(ASCENT_MPI_ENABLED)
+//   // if the topology does not exist on this rank,
+//   // but exists somewhere, we need to figure out what
+//   // that name is for all ranks so all ranks
+//   // can run the same code at the same time, avoiding deadlock
+//   int rank;
+//   MPI_Comm mpi_comm = MPI_Comm_f2c(vtkh::GetMPICommHandle());
+//   MPI_Comm_rank(mpi_comm, &rank);
 
-  struct MaxLoc
-  {
-    double size;
-    int rank;
-  };
+//   struct MaxLoc
+//   {
+//     double size;
+//     int rank;
+//   };
 
-  // there is no MPI_INT_INT so shove the "small" size into double
-  MaxLoc maxloc = {(double)topo_name.length(), rank};
-  MaxLoc maxloc_res;
-  MPI_Allreduce( &maxloc, &maxloc_res, 1, MPI_DOUBLE_INT, MPI_MAXLOC, mpi_comm);
+//   // there is no MPI_INT_INT so shove the "small" size into double
+//   MaxLoc maxloc = {(double)topo_name.length(), rank};
+//   MaxLoc maxloc_res;
+//   MPI_Allreduce( &maxloc, &maxloc_res, 1, MPI_DOUBLE_INT, MPI_MAXLOC, mpi_comm);
 
-  conduit::Node msg;
-  msg["topo"] = topo_name;
-  conduit::relay::mpi::broadcast_using_schema(msg,maxloc_res.rank,mpi_comm);
+//   conduit::Node msg;
+//   msg["topo"] = topo_name;
+//   conduit::relay::mpi::broadcast_using_schema(msg,maxloc_res.rank,mpi_comm);
 
-  if(!msg["topo"].dtype().is_string())
-  {
-    ASCENT_ERROR("failed to broadcast topo name");
-  }
-  topo_name = msg["topo"].as_string();
-#endif
+//   if(!msg["topo"].dtype().is_string())
+//   {
+//     ASCENT_ERROR("failed to broadcast topo name");
+//   }
+//   topo_name = msg["topo"].as_string();
+// #endif
   return topo_name;
 }
 
@@ -186,8 +186,7 @@ bool VTKHCollection::has_field(const std::string field_name) const
     }
   }
 
-
-  return detail::global_has(has);
+  return has; //detail::global_has(has);
 }
 
 vtkm::Bounds VTKHCollection::global_bounds() const
@@ -367,11 +366,12 @@ int VTKHCollection::number_of_topologies() const
 
 VTKHCollection* VTKHCollection::copy_without_topology(const std::string topology_name)
 {
-  if(!has_topology(topology_name))
-  {
-    ASCENT_ERROR("Copy without topology with '"<<topology_name<<"' failed."
-                 << " Topology does not exist");
-  }
+  // TODO: remove bc of global call
+  // if(!has_topology(topology_name))
+  // {
+  //   ASCENT_ERROR("Copy without topology with '"<<topology_name<<"' failed."
+  //                << " Topology does not exist");
+  // }
 
   VTKHCollection *copy = new VTKHCollection(*this);
   copy->m_datasets.erase(topology_name);

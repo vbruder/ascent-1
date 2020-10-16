@@ -117,6 +117,7 @@ CheckForSettingsFile(std::string file_name,
     int comm_size = 1;
     int rank = 0;
 #ifdef ASCENT_MPI_ENABLED
+    std::cout << "*** ascent CheckForSettingsFile mpi_comm_id " << mpi_comm_id << std::endl; 
     if(mpi_comm_id == -1)
     {
       // do nothing, an error will be thrown later
@@ -171,6 +172,39 @@ CheckForSettingsFile(std::string file_name,
 #endif
 }
 
+void
+CheckForSettingsFile2(std::string file_name, conduit::Node &node, bool merge)
+{
+    if(!conduit::utils::is_file(file_name))
+    {
+        return;
+    }
+
+    std::string curr,next;
+
+    std::string protocol = "json";
+    // if file ends with yaml, use yaml as proto
+    conduit::utils::rsplit_string(file_name,
+                                  ".",
+                                  curr,
+                                  next);
+    if(curr == "yaml")
+    {
+        protocol = "yaml";
+    }
+
+    conduit::Node file_node;
+    file_node.load(file_name, protocol);
+    if(merge)
+    {
+      node.update(file_node);
+    }
+    else
+    {
+      node = file_node;
+    }
+}
+
 //-----------------------------------------------------------------------------
 void
 Ascent::open(const conduit::Node &options)
@@ -197,10 +231,12 @@ Ascent::open(const conduit::Node &options)
           comm_id = options["mpi_comm"].to_int32();
         }
 
-        CheckForSettingsFile(opts_file,
-                             processed_opts,
-                             true,
-                             comm_id);
+        // CheckForSettingsFile(opts_file,
+        //                      processed_opts,
+        //                      true,
+        //                      comm_id);
+
+        CheckForSettingsFile2(opts_file, processed_opts, true);
 
         m_options = processed_opts;
 
@@ -258,6 +294,8 @@ Ascent::open(const conduit::Node &options)
                 runtime_type = m_options["runtime/type"].as_string();
             }
         }
+
+        // std::cout << "runtime type: " << runtime_type << std::endl;
 
         if(runtime_type == "empty")
         {
@@ -333,6 +371,7 @@ Ascent::open(const conduit::Node &options)
         }
 
         m_runtime->Initialize(m_options);
+
 
         // don't print info messages unless we are using verbose
         // Runtimes may set their own handlers in initialize, so
@@ -433,10 +472,11 @@ Ascent::execute(const conduit::Node &actions)
                 }
             }
 
-            CheckForSettingsFile(m_actions_file,
-                                 processed_actions,
-                                 false,
-                                 m_options["mpi_comm"].to_int32());
+            // CheckForSettingsFile(m_actions_file,
+            //                      processed_actions,
+            //                      false,
+            //                      m_options["mpi_comm"].to_int32());
+            CheckForSettingsFile2(m_actions_file, processed_actions, false);
 
             m_runtime->Execute(processed_actions);
         }
