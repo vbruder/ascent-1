@@ -463,7 +463,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
             // if sim node got all its images back for inline rendering
             // -> take it out of consideration
             if (render_counts_sim[min_id] == render_cfg.non_probing_count)
-                t_inline[min_id] = std::numeric_limits<float>::max() - t_sim[min_id];
+                t_inline[min_id] = -1.f; //std::numeric_limits<float>::max() - t_sim[min_id];
 
             // recalculate inline + sim time
             t_inline_sim = t_inline + t_sim;
