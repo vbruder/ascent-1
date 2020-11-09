@@ -144,6 +144,7 @@ AscentRuntime::AscentRuntime()
  m_render_count(0),
  m_render_offset(0),
  m_insitu_type("hybrid"),
+ m_sampling_method("random"),
  m_is_cinema_increment(0),
  m_sleep(0)
 {
@@ -333,6 +334,8 @@ void AscentRuntime::Initialize(const conduit::Node &options)
     m_render_offset = options["render_offset"].as_int32();
   if (options.has_path("insitu_type"))
     m_insitu_type = options["insitu_type"].as_string();
+  if (options.has_path("sampling_method"))
+    m_sampling_method = options["sampling_method"].as_string();    
   if (options.has_path("cinema_increment"))
     m_is_cinema_increment = options["cinema_increment"].as_int32();
   if (options.has_path("sleep"))
@@ -1082,6 +1085,7 @@ void AscentRuntime::PopulateMetadata()
   (*meta)["render_offset"] = m_render_offset;
   (*meta)["insitu_type"] = m_insitu_type;
   (*meta)["cinema_increment"] = m_is_cinema_increment;
+  (*meta)["sampling_method"] = m_sampling_method;
   (*meta)["sleep"] = m_sleep;
   (*meta)["default_dir"] = m_default_output_dir;
 

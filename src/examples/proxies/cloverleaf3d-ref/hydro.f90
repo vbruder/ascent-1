@@ -72,6 +72,8 @@ SUBROUTINE hydro
   ! Runtime defined here
   CALL conduit_node_set_path_char8_str(ascent_opts,"runtime/type", "probing")
   CALL conduit_node_set_path_char8_str(ascent_opts,"actions_file", "probing_actions.yaml")
+  ! other options
+  CALL conduit_node_set_path_char8_str(ascent_opts,"field_filtering", "true")
   CALL ascent_open(my_ascent,ascent_opts)
 
   unix = c_time(int(0, kind=8))

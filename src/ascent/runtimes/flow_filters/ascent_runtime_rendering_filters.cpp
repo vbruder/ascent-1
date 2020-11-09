@@ -321,8 +321,6 @@ public:
       scene.AddRenderer(r);
     }
 
-    std::cout << "fetch " << std::endl;
-
     size_t num_renders = renders.size();
     for(size_t i = 0; i < num_renders; ++i)
     {
@@ -586,8 +584,8 @@ public:
                     const conduit::Node &render_node,
                     const int current_render_count,
                     const int render_offset,
-                    const int stride,
-                    const bool is_probing)
+                    const bool is_probing,
+                    const std::vector<int> &probing_sequence)
   {
     conduit::Node render_copy = render_node;
 
@@ -615,12 +613,26 @@ public:
     if (current_render_count > 0)
       num_renders = current_render_count;
 
-    for (int i = render_offset; i < render_offset + num_renders; )
+    int probing_it = 0;
+    while (probing_sequence.size() > probing_it && probing_sequence[probing_it] < render_offset)
+      ++probing_it;
+
+    int i = render_offset;
+    if (is_probing && probing_sequence.size() > probing_it)
+      i = probing_sequence[probing_it]; // first probing render
+
+    while (i < render_offset + num_renders)
     {
-      if (!is_probing && (stride > 1) && (i % stride == 0))
+      if (probing_sequence.size() <= probing_it)
+      {
+        ASCENT_ERROR("Missing sampling sequence in runtime rendering filters.");
+        break;
+      }
+      if (!is_probing && (i == probing_sequence[probing_it]))
       {
         ++i;
-        continue; // skip render, already rendered while probing
+        ++probing_it;
+        continue;     // skip render, already rendered while probing
       }
 
       std::string image_name = conduit::utils::join_file_path(m_image_path , m_image_names[i]);
@@ -640,11 +652,14 @@ public:
       render.SetCamera(camera);
       renders->push_back(render);
 
-      if (is_probing)
-        i += stride;  // skip to next probing image
-      else
+      if (is_probing && probing_sequence.size() > ++probing_it)
+        i = probing_sequence[probing_it];  // skip to next probing image
+      else if (is_probing)
+        break;    // this was the last probing image
+      else  // non-probing, advance to the next image
         ++i;
     }
+    std::cout << "___renders.size " << renders->size() << std::endl;
   }
 
   std::string get_string(const float value)
@@ -924,7 +939,6 @@ DefaultRender::verify_params(const conduit::Node &params,
 void
 DefaultRender::execute()
 {
-
     if(!input(0).check_type<vtkm::Bounds>())
     {
       ASCENT_ERROR("'a' input must be a vktm::Bounds * instance");
@@ -989,8 +1003,10 @@ DefaultRender::execute()
           }
 
           // check if probing run
-          double probing_factor = 1.0;
+          double probing_factor = 0.0;
           int stride = 1;
+
+          std::vector<int> probing_sequence;
           bool is_probing = false;
           if (meta->has_path("is_probing") && meta->has_path("probing_factor"))
           {
@@ -1001,7 +1017,42 @@ DefaultRender::execute()
               if ((*meta)["is_probing"].as_int32())
                 is_probing = true;
             }
+
+            std::string sampling_method;
+            if (meta->has_path("sampling_method"))
+            {
+              sampling_method = (*meta)["sampling_method"].as_string();
+              if (sampling_method == "random")
+              {
+                std::srand(42);
+                const int range_from  = 0;
+                const int range_to    = full_render_count;
+                const int probing_count = int(probing_factor * full_render_count);
+                probing_sequence.resize(probing_count);
+                for (int i = 0; i < probing_count; ++i)
+                {
+                  int r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
+                  probing_sequence[i] = r;
+                }
+                std::sort(probing_sequence.begin(), probing_sequence.end());
+              }
+              else if (stride > 0)  // systematic
+              {
+                int pos = 0;
+                do 
+                {
+                  probing_sequence.push_back(pos);
+                  pos += stride;
+                } while (pos < full_render_count);
+              }
+              
+              // std::cout << "probing sequence: ";
+              // for (auto &a : probing_sequence)
+              //     std::cout << a << " ";
+              // std::cout << std::endl;
+            }
           }
+
           bool is_cinema_increment = false;
           if (meta->has_path("cinema_increment"))
             is_cinema_increment = (*meta)["cinema_increment"].as_int32();
@@ -1037,16 +1088,15 @@ DefaultRender::execute()
           parse_image_dims(render_node, image_width, image_height);
 
           manager.set_bounds(*bounds);
-          // Add new timestep only for probing run, otherwise we generate too many.
+          // Add new timestep only for probing runs, otherwise we generate too many.
           if (is_probing || (!is_probing && is_cinema_increment)) 
           {
             manager.add_time_step(insitu_type == "intransit");
           }
           manager.fill_renders(renders, render_node, current_render_count, render_offset, 
-                               stride, is_probing);
+                               is_probing, probing_sequence);
           manager.write_metadata();
         }
-
         else
         {
           // this render has a unique name

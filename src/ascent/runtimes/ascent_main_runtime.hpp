@@ -117,6 +117,7 @@ private:
     int               m_render_count = 0;
     int               m_render_offset = 0;
     std::string       m_insitu_type = "hybrid";
+    std::string       m_sampling_method = "random";
     int               m_is_cinema_increment = 0;
     int               m_sleep = 0;
     conduit::Node     m_ghost_fields; // a list of strings

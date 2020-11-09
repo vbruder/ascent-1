@@ -417,6 +417,10 @@ SUBROUTINE clover_exchange(fields,depth)
 
     !make a call to wait / sync
     CALL MPI_WAITALL(message_count,request,status,err)
+    IF(err.NE.MPI_SUCCESS)THEN
+      WRITE(g_out,*)"ERROR in MPI_WAITALL 419: ",err
+    ENDIF
+
 
     !unpack in left direction
     IF(chunks(chunk)%chunk_neighbours(chunk_left).NE.external_face) THEN
@@ -464,6 +468,9 @@ SUBROUTINE clover_exchange(fields,depth)
 
     !need to make a call to wait / sync
     CALL MPI_WAITALL(message_count,request,status,err)
+    IF(err.NE.MPI_SUCCESS)THEN
+      WRITE(g_out,*)"ERROR in MPI_WAITALL 470: ",err
+    ENDIF
 
     !unpack in top direction
     IF( chunks(chunk)%chunk_neighbours(chunk_top).NE.external_face ) THEN
@@ -510,6 +517,9 @@ SUBROUTINE clover_exchange(fields,depth)
 
     !need to make a call to wait / sync
     CALL MPI_WAITALL(message_count,request,status,err)
+    IF(err.NE.MPI_SUCCESS)THEN
+      WRITE(g_out,*)"ERROR in MPI_WAITALL 519: ",err
+    ENDIF
 
     !unpack in front direction
     IF( chunks(chunk)%chunk_neighbours(chunk_front).NE.external_face ) THEN
