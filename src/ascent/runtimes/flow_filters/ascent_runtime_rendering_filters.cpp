@@ -608,6 +608,7 @@ public:
                                                m_bounds,
                                                tmp_name);
     int num_renders = m_image_names.size();
+    // std::cout << "FILL RENDERS " << render_offset << " - " << current_render_count << std::endl;
 
     // adjust render count
     if (current_render_count > 0)
@@ -631,7 +632,8 @@ public:
       if (!is_probing && (i == probing_sequence[probing_it]))
       {
         ++i;
-        ++probing_it;
+        if (probing_sequence.size() > probing_it + 1)
+          ++probing_it;
         continue;     // skip render, already rendered while probing
       }
 
@@ -659,7 +661,7 @@ public:
       else  // non-probing, advance to the next image
         ++i;
     }
-    std::cout << "___renders.size " << renders->size() << std::endl;
+    // std::cout << "___renders.size " << renders->size() << std::endl;
   }
 
   std::string get_string(const float value)

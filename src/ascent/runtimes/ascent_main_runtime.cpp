@@ -1625,7 +1625,7 @@ void AscentRuntime::Execute(const conduit::Node &actions)
 
         const int size = images->number_of_children();
 
-        // std::cout << "_ascent main: number of images " << size << std::endl;
+        std::cout << "_ascent main: number of images " << size << std::endl;
         // Note: this copy costs ~1.5 seconds -> avoid it (only needed for interactive web interface?)
         // Node image_params = *images;
         // m_info["images"].set_external(image_params);

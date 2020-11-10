@@ -1082,7 +1082,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     }
     //     batches[i] = get_batch(g_render_counts[src_ranks[i]], render_cfg.batch_count);
 
-    std::cout << "~~~~arrange render order " << mpi_props.rank << std::endl;
+    std::cout << "~~~~sort renders for compositing " << mpi_props.rank << std::endl;
 
     // arrange render order
     vector<int> probing_enum_sim(my_data_recv_cnt, 0);
@@ -1091,9 +1091,10 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     vec_vec_node_sptr render_ptrs(render_cfg.max_count);
     std::vector<std::vector<int> > render_arrangement(render_cfg.max_count);
     int probing_it = 0;
-    bool print_compositing_order = true;
-    if (mpi_props.rank == 9)
-        print_compositing_order = false;
+
+    bool print_compositing_order = false;   // debug out for compositing sort
+    // if (mpi_props.rank == 9)
+        // print_compositing_order = false;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
     {
@@ -1178,9 +1179,6 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
 
                 const index_t id = j - (g_render_counts[src_ranks[i]] + probing_enum_sim[i])
                                      - probing_enum_vis[i];
-                if (!render_chunks_vis[i]->has_child("render_file_names"))
-                    if (print_compositing_order)
-                        std::cout << " " << mpi_props.rank << " render_file_names  " << id << std::endl;
 
                 if (render_chunks_vis[i] && render_chunks_vis[i]->has_child("render_file_names"))
                 {
@@ -1391,6 +1389,8 @@ void get_renders(Ascent &ascent, std::shared_ptr<conduit::Node> &renders)
 
     if (info.has_child("render_file_names"))
         renders = std::make_shared<Node>(info);
+    else
+        std::cout << "no render_file_names" << std::endl;
 }
 
 //-----------------------------------------------------------------------------
@@ -1740,8 +1740,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
                                 << render_offset << " - "
                                 << render_offset + current_render_count << std::endl;
 
-                    ascent_opts["render_count"] = current_render_count;
                     ascent_opts["render_offset"] = render_offset;
+                    ascent_opts["render_count"] = current_render_count;
                     ascent_opts["cinema_increment"] = (i == 0) ? true : false;
                     ascent_opts["sleep"] = (src_ranks[i] == 0) ? SLEEP : 0;
 
@@ -1787,7 +1787,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 ASCENT_ERROR("Thread not joinable.")
             threads.pop_back();
         }
-        print_time(t_render, "-- copy VIS ", mpi_props.rank);
+        print_time(t_render, "-- copy VIS total ", mpi_props.rank);
 
         log_global_time("end render", mpi_props.rank);
 
