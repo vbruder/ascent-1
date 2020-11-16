@@ -79,8 +79,12 @@ SUBROUTINE hydro
   unix = c_time(int(0, kind=8))
   WRITE(g_out_stamps,*) 'start sim ', unix
 
+  IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
+    CALL clover_barrier_sim
+  ENDIF
   timerstart = timer()
   sim_timer = timerstart
+
   DO
     
     ! CALL ascent_timer_start(C_CHAR_"CLOVER_MAIN_LOOP"//C_NULL_CHAR)
@@ -100,6 +104,7 @@ SUBROUTINE hydro
       CALL reset_field()
     ELSE
       CALL visit(my_ascent, 0)  ! TODO: avoid last call time+g_small.GT.end_time.OR.step.GE.end_step
+      CYCLE
     ENDIF
     
     advect_x = .NOT. advect_x
@@ -123,14 +128,15 @@ SUBROUTINE hydro
 
     
     ! visualization
-    IF (visit_sim_time.GT.0.0) THEN
-      IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
-        CALL clover_barrier_sim
-      ENDIF
+    IF (visit_sim_time.GT.0.0 .AND. MPI_COMM_NULL.NE.parallel%sim_comm) THEN  ! WALL CLOCK TIME BASED VIS INVOCATION
+      ! IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
+      CALL clover_barrier_sim
+      ! ENDIF
 
       ! trigger vis based on cycle time
       cycle_time = timer() - sim_timer
       IF(cycle_time.GT.visit_sim_time .OR. step.EQ.1) THEN
+        WRITE(g_out,*) 'step ', step
         vis_time=timer()
 
         IF (step.EQ.1) THEN
@@ -148,8 +154,7 @@ SUBROUTINE hydro
         WRITE(g_out_stamps,*) 'start sim ', unix
         sim_timer = timer()
       ENDIF
-
-    ELSE IF (visit_frequency.NE.0) THEN
+    ELSE IF (visit_frequency.NE.0 ) THEN   ! STEP BASED VIS INVOCATION
       IF(MOD(step, visit_frequency).EQ.initial_steps) THEN
         vis_time=timer()
 

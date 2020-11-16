@@ -936,12 +936,6 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
     // // last batch renders the rest
     // if (total_count - sum > 0)
     //     batch_sizes.push_back(total_count - sum);
-
-    std::cout << "batch_sizes ";
-    for (auto &b : batch_sizes)
-        std::cout << b << " ";
-    std::cout << std::endl;
-
     return batch_sizes;
 }
 
@@ -1079,7 +1073,12 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     for (int i = 0; i < sim_batch_sizes.size(); ++i)
     {
         sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);
+        // std::cout << mpi_props.rank << " batch_sizes comp ";
+        // for (auto &b : sim_batch_sizes[i])
+        //     std::cout << b << " ";
+        // std::cout << std::endl;
     }
+
     //     batches[i] = get_batch(g_render_counts[src_ranks[i]], render_cfg.batch_count);
 
     std::cout << "~~~~sort renders for compositing " << mpi_props.rank << std::endl;
@@ -1624,8 +1623,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
             //                     + int(g_render_counts[src_ranks[i]]*render_cfg.probing_factor);
             // batches[i] = get_batch(render_count, render_cfg.batch_count);
 
-            sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);
+            sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);            
+            // std::cout << mpi_props.rank << " batch_sizes ";
+            // for (auto &b : sim_batch_sizes[i])
+            //     std::cout << b << " ";
+            // std::cout << std::endl;
         }
+        
 
         // probing chunks
         vec_node_uptr render_chunks_probe(my_render_recv_cnt);
@@ -1808,6 +1812,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
         }
         log_global_time("end receiveRenders", mpi_props.rank);
 
+        // TODO: MPI waitall problem somewhere here (?)
+
         // find out which of the vis nodes do actual rendering/compositing
         std::vector<int> active_nodes(mpi_props.vis_node_count, 0);
         for (int v = 0; v < mpi_props.vis_node_count; v++)
@@ -1860,6 +1866,11 @@ void hybrid_render(const MPI_Properties &mpi_props,
         {
             std::vector<int> batch_sizes = get_batch_sizes(g_render_counts[mpi_props.rank],
                                                            render_cfg, true);
+
+            std::cout << mpi_props.rank << " SIM: batch_sizes ";
+            for (auto &b : batch_sizes)
+                std::cout << b << " ";
+            std::cout << std::endl;
 
             {   // init send buffer
                 detach_mpi_buffer();
@@ -2251,6 +2262,7 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
     }
 
     log_global_time("end ascent", world_rank);
+    
 #endif
 }
 
