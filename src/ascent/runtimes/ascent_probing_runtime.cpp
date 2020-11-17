@@ -1546,6 +1546,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
     ascent_opts["probing_factor"] = render_cfg.probing_factor;
     ascent_opts["sampling_method"] = render_cfg.sampling_method;
     ascent_opts["insitu_type"] = render_cfg.insitu_type;
+    ascent_opts["field_filter"] = "true";
 
     log_time(start1, "- load distribution ", mpi_props.rank);
     log_global_time("end loadAssignment", mpi_props.rank);
@@ -2182,6 +2183,7 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
         ascent_opt["insitu_type"] = insitu_type;
         ascent_opt["sampling_method"] = sampling_method;
         ascent_opt["sleep"] = world_rank == 0 ? SLEEP : 0;
+        ascent_opt["field_filter"] = "true";
 
         // all sim nodes run probing in a new ascent instance
         ascent_probing.open(ascent_opt);
