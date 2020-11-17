@@ -873,7 +873,7 @@ int calc_render_msg_size(const int render_count, const int width = 800, const in
  * @return Vector containing all batch sizes.
  */
 std::vector<int> get_batch_sizes(const int render_count, const RenderConfig render_cfg,
-                                 const bool include_probing, const int min_batch_size = 32)
+                                 const bool include_probing, const int min_batch_size = 16)
 {
     // assert(render_cfg.batch_count > 0 && render_cfg.probing_stride > 2);
     if (render_count <= 0)
@@ -912,10 +912,11 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
     {
         std::vector<int> batch_sizes_probing(batch_sizes.size());
         std::copy(batch_sizes.begin(), batch_sizes.end(), batch_sizes_probing.begin());
+        offset = 0;
         for (int i = 0; i < batch_count; ++i)
         {
-            offset = i > 0 ? batch_sizes_probing[i - 1] : 0;
             batch_sizes[i] -= render_cfg.get_probing_count_part(batch_sizes[i], offset);
+            offset += batch_sizes_probing[i];
         }
     }
 
@@ -1625,10 +1626,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
             // batches[i] = get_batch(render_count, render_cfg.batch_count);
 
             sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);            
-            // std::cout << mpi_props.rank << " batch_sizes ";
-            // for (auto &b : sim_batch_sizes[i])
-            //     std::cout << b << " ";
-            // std::cout << std::endl;
+            std::cout << mpi_props.rank << " VIS: batch_sizes ";
+            for (auto &b : sim_batch_sizes[i])
+                std::cout << b << " ";
+            std::cout << std::endl;
         }
         
 
@@ -1661,8 +1662,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
             {
                 buffer_size = calc_render_msg_size(sim_batch_sizes[i][j]); // render_cfg.probing_factor);
                 render_chunks_sim[i][j] = make_unique<Node>(DataType::uint8(buffer_size));
-                // std::cout << sim_batch_sizes[i][j] << " expected render_msg_size "
-                //           << buffer_size << std::endl;
+                // std::cout << mpi_props.rank << " | " << i << " " << j << " " << sim_batch_sizes[i][j] 
+                //           << " expected render_msg_size " << buffer_size << std::endl;
             }
         }
 
@@ -1805,6 +1806,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             // inline renders
             for (auto &batch_requests : requests_inline_sim)
             {
+                // FIXME: 
                 int mpi_error = MPI_Waitall(batch_requests.size(), batch_requests.data(), MPI_STATUSES_IGNORE);
                 if (mpi_error)
                     std::cout << "ERROR: waitall (vis node receiving inline renders) " << mpi_props.rank << std::endl;
@@ -1812,8 +1814,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
             log_time(t_start, "+ wait receive img ", mpi_props.rank);
         }
         log_global_time("end receiveRenders", mpi_props.rank);
-
-        // TODO: MPI waitall problem somewhere here (?)
 
         // find out which of the vis nodes do actual rendering/compositing
         std::vector<int> active_nodes(mpi_props.vis_node_count, 0);
