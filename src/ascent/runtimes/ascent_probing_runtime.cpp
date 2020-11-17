@@ -873,7 +873,7 @@ int calc_render_msg_size(const int render_count, const int width = 800, const in
  * @return Vector containing all batch sizes.
  */
 std::vector<int> get_batch_sizes(const int render_count, const RenderConfig render_cfg,
-                                 const bool include_probing, const int min_batch_size = 16)
+                                 const bool include_probing, const int min_batch_size = 32)
 {
     // assert(render_cfg.batch_count > 0 && render_cfg.probing_stride > 2);
     if (render_count <= 0)
