@@ -47,8 +47,9 @@ SUBROUTINE hydro
     end function c_time
   end interface
 
-  INTEGER         :: loc(1),err,rank,size,color,rank_split,sim_vis_comm
+  INTEGER         :: loc(1),err,rank,size,color,rank_split,sim_vis_comm,is_visit
   INTEGER(kind=8) :: unix
+  INTEGER         :: buffer(0:7)
   REAL(KIND=8)    :: timer,timerstart,wall_clock,step_clock,sim_timer,cycle_time
 
   REAL(KIND=8)    :: grind_time,cells,rstep
@@ -91,7 +92,7 @@ SUBROUTINE hydro
     step_time = timer()
     
     step = step + 1
-
+    
     ! only on sim nodes
     ! IF(parallel%task.LT.parallel%max_task)THEN
     IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
@@ -103,21 +104,23 @@ SUBROUTINE hydro
       CALL advection()
       CALL reset_field()
     ELSE
-      CALL visit(my_ascent, 0)  ! TODO: avoid last call time+g_small.GT.end_time.OR.step.GE.end_step
-      CYCLE
+      IF(time.LT.end_time.OR.step.LT.end_step) THEN
+        CALL visit(my_ascent, 0)  ! TODO: avoid last call time+g_small.GT.end_time.OR.step.GE.end_step
+        CYCLE
+      ENDIF
     ENDIF
     
     advect_x = .NOT. advect_x
-
+    
     time = time + dt    ! TODO: 
-
+    
     wall_clock=timer() - timerstart
-
+    
     ! write node sim time to file
     WRITE(g_out_times,*) 'step time ', step, timer() - step_time
-
+    
     ! CALL ascent_timer_stop(C_CHAR_"CLOVER_MAIN_LOOP"//C_NULL_CHAR)
-
+    
     IF(summary_frequency.NE.0) THEN
       IF(MOD(step, summary_frequency).EQ.0)THEN
         IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
@@ -125,18 +128,28 @@ SUBROUTINE hydro
         ENDIF
       ENDIF
     ENDIF
-
     
     ! visualization
     IF (visit_sim_time.GT.0.0 .AND. MPI_COMM_NULL.NE.parallel%sim_comm) THEN  ! WALL CLOCK TIME BASED VIS INVOCATION
-      ! IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
-      CALL clover_barrier_sim
-      ! ENDIF
+      cycle_time = timer() - sim_timer
+
+      ! synchronize visit call 
+      IF(cycle_time.GT.visit_sim_time .OR. step.EQ.1) THEN
+        is_visit = 1
+      ELSE
+        is_visit = 0
+      ENDIF
+
+      ! WRITE(g_out,*) 'CLOVER: sync vis ', step
+      CALL MPI_Allgather(is_visit, 1, MPI_INTEGER, buffer, 1, MPI_INTEGER, parallel%sim_comm, err)
+      ! do another cycle until all ranks are above time trigger
+      IF (is_visit.GE.1 .AND. minval(buffer).LE.0) THEN 
+        ! WRITE(g_out,*) 'CLOVER: cycle ', step
+        CYCLE
+      ENDIF
 
       ! trigger vis based on cycle time
-      cycle_time = timer() - sim_timer
       IF(cycle_time.GT.visit_sim_time .OR. step.EQ.1) THEN
-        WRITE(g_out,*) 'step ', step
         vis_time=timer()
 
         IF (step.EQ.1) THEN
