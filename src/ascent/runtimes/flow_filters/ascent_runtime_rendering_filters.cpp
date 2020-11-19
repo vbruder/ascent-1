@@ -1582,7 +1582,7 @@ void add_images(std::vector<vtkh::Render> *renders,
   // check if anything was rendered
   if (color_buffers->size() == 0)
   {
-    std::cout << "no image to add." << std::endl;
+    // std::cout << "no image to add." << std::endl;
     return;
   }
 

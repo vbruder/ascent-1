@@ -1619,7 +1619,7 @@ void AscentRuntime::Execute(const conduit::Node &actions)
         }
         else
         {
-          std::cout << "No image list." << std::endl;
+          // std::cout << "No image list." << std::endl;
           return;
         }
 
