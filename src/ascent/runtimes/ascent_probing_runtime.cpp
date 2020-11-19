@@ -1404,6 +1404,14 @@ void hybrid_render(const MPI_Properties &mpi_props,
     assert(render_cfg.insitu_type != "inline");
     assert(mpi_props.sim_node_count > 0 && mpi_props.sim_node_count <= mpi_props.size);
 
+    if (mpi_props.rank == 0)
+    {
+        std::cout << "=== Probing sequence: ";
+        for (auto &a : render_cfg.probing_ids)
+            std::cout << a << " ";
+        std::cout << std::endl;
+    }
+
     auto start0 = std::chrono::system_clock::now();
 
     bool is_vis_node = false;
@@ -1629,10 +1637,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
             // batches[i] = get_batch(render_count, render_cfg.batch_count);
 
             sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);            
-            std::cout << mpi_props.rank << " * VIS: batch_sizes ";
-            for (auto &b : sim_batch_sizes[i])
-                std::cout << b << " ";
-            std::cout << std::endl;
         }
         
 
@@ -1688,8 +1692,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
                     std::cout << "ERROR receiving probing parts from " << src_ranks[i] << std::endl;
             }
 
-            std::cout << mpi_props.rank << " * VIS: receiving " << sim_batch_sizes[i].size()
-                    << " batches from " << src_ranks[i] << std::endl;
+            std::stringstream ss;
+            ss << mpi_props.rank << " * VIS: receiving batches of sizes ";
+            for (auto &b : sim_batch_sizes[i])
+                ss << b << " ";
+            ss << " from " << src_ranks[i] << std::endl;
+            std::cout << ss.str();
+
             for (int j = 0; j < sim_batch_sizes[i].size(); ++j)
             {
                 if (sim_batch_sizes[i][j] <= 0)
@@ -1830,7 +1839,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             }
         }
         const int active_vis_nodes = std::accumulate(active_nodes.begin(), active_nodes.end(), 0);
-        std::cout << " ~ VIS: Active vis nodes: " << active_vis_nodes << std::endl;
+        std::cout << mpi_props.rank << " * VIS: Active vis nodes: " << active_vis_nodes << std::endl;
 
         // adapt the vis comm according to the active vis nodes
         std::vector<int> vis_ranks(active_vis_nodes);
