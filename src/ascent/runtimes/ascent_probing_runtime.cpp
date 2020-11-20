@@ -897,14 +897,23 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
         if (end >= total_count)  // last batch
         {
             batch_sizes[i] = total_count - offset;
-            // corner case: last image is a probing
-            if (render_cfg.probing_ids.back() == total_count - 1 && batch_sizes[i] > 0)
-                batch_sizes[i] -= 1;
+            // corner case: last image(s) is a probing -> TODO: do we need this??
+            // int j = 1;
+            // while ( render_cfg.probing_count - j >= 0 
+            //         && render_cfg.probing_ids.at(render_cfg.probing_count - j) == total_count - j
+            //         && batch_sizes[i] > j)
+            // {
+            //     batch_sizes[i] -= 1;
+            //     ++j;
+            // }
         }
         else
         {
-            bool valid = render_cfg.get_next_probing_id(offset + size, end);
-            batch_sizes[i] = end - offset;
+            bool is_next_probing = render_cfg.get_next_probing_id(offset + size, end);
+            if (is_next_probing)
+                batch_sizes[i] = end - offset;
+            else
+                batch_sizes[i] = size;
         }
         offset += batch_sizes[i];
     }
@@ -1093,8 +1102,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     int probing_it = 0;
 
     bool print_compositing_order = false;   // debug out for compositing sort
-    // if (mpi_props.rank == 9)
-        // print_compositing_order = false;
+    if (false && mpi_props.rank == 9)
+        print_compositing_order = true;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
     {
@@ -1473,14 +1482,14 @@ void hybrid_render(const MPI_Properties &mpi_props,
         // for (auto &a : my_probing_times)
         //     std::cout << a << " ";
         std::stringstream ss;
-        ss << mpi_props.rank << " ~ SIM: probing time (overhead): " << sum_render_times/1000.0 
+        ss << mpi_props.rank << " ~SIM: probing time (overhead): " << sum_render_times/1000.0 
            << " (" << total_probing_time << ")" << std::endl;
         std::cout << ss.str();
         // std::cout << "probing w/  overhead " << total_probing_time << std::endl;
         my_render_overhead = total_probing_time - sum_render_times/1000.0;
         // my_render_overhead *= render_cfg.batch_count;
 
-        std::cout << mpi_props.rank << " ~ SIM: visualization time estimate (per render): "
+        std::cout << mpi_props.rank << " ~SIM: visualization time estimate (per render): "
                   << my_avg_probing_time << std::endl;
 
         if (render_cfg.insitu_type == "hybrid")
@@ -1767,7 +1776,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                     ascent_renders[i].open(ascent_opts);
                     ascent_renders[i].publish(dataset);
                     ascent_renders[i].execute(blank_actions);
-                    print_time(t_render, " * VIS: render ", mpi_props.rank, 1.0 / current_render_count);
+                    print_time(t_render, " * VIS: avg t/render ", mpi_props.rank, 1.0 / current_render_count);
 
                     threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
                                                    std::ref(render_chunks_vis[i])));
@@ -1872,7 +1881,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
     else
     {
         const int destination = node_map[mpi_props.rank] + mpi_props.sim_node_count;
-        // std::cout << mpi_props.rank << " ~ SIM: sends extract to "
+        // std::cout << mpi_props.rank << " ~SIM: sends extract to "
         //           <<  node_map[mpi_props.rank] + mpi_props.sim_node_count << std::endl;
         Node verify_info;
         if (conduit::blueprint::mesh::verify(data, verify_info))
@@ -1880,7 +1889,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             std::vector<int> batch_sizes = get_batch_sizes(g_render_counts[mpi_props.rank],
                                                            render_cfg, true);
 
-            std::cout << mpi_props.rank << " ~ SIM: batch_sizes ";
+            std::cout << mpi_props.rank << " ~SIM: batch_sizes ";
             for (auto &b : batch_sizes)
                 std::cout << b << " ";
             std::cout << std::endl;
@@ -1957,7 +1966,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 if (render_count == 0)
                     break;
 
-                std::cout << mpi_props.rank << " ~ SIM: rendering "
+                std::cout << mpi_props.rank << " ~SIM: rendering "
                           << begin << " - " << begin + render_count << std::endl;
 
                 ascent_opts["render_count"] = render_count;
@@ -1967,7 +1976,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 auto t_render = std::chrono::system_clock::now();
                 ascent_renders[i].open(ascent_opts);
                 ascent_renders[i].publish(data);
-                // print_time(t_render, " ~ SIM: publish data ", mpi_props.rank);
+                // print_time(t_render, " ~SIM: publish data ", mpi_props.rank);
                 t_render = std::chrono::system_clock::now();
                 ascent_renders[i].execute(blank_actions);
                 auto t_end = std::chrono::system_clock::now();
@@ -1994,7 +2003,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
                 t_end = std::chrono::system_clock::now();
                 sum_copy += t_end - t_render;
-                // print_time(t_render, " ~ SIM: ascent info ", mpi_props.rank, 1.0 / (end - begin));
+                // print_time(t_render, " ~SIM: ascent info ", mpi_props.rank, 1.0 / (end - begin));
             }
 
             auto t_render = std::chrono::system_clock::now();
@@ -2009,8 +2018,9 @@ void hybrid_render(const MPI_Properties &mpi_props,
             log_duration(sum_render, "+ render sim " + std::to_string(g_render_counts[mpi_props.rank]) + " ", mpi_props.rank);
             log_duration(sum_copy, "+ copy sim " + std::to_string(g_render_counts[mpi_props.rank]) + " ", mpi_props.rank);
 
-            std::cout << mpi_props.rank << " ~ SIM: render " << sum_render.count() << std::endl;
-            std::cout << mpi_props.rank << " ~ SIM: copy " << sum_copy.count() << std::endl;
+            std::cout << mpi_props.rank << " ~SIM: avg t/render " 
+                      << sum_render.count()/g_render_counts[mpi_props.rank] << std::endl;
+            std::cout << mpi_props.rank << " ~SIM: copy (sum) " << sum_copy.count() << std::endl;
 
             log_global_time("end render", mpi_props.rank);
 
@@ -2044,7 +2054,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
         else
         {
             std::cout << "ERROR: rank " << mpi_props.rank 
-                        << " ~ SIM: could not verify (conduit::blueprint::mesh::verify) the sent data." 
+                        << " ~SIM: could not verify (conduit::blueprint::mesh::verify) the sent data." 
                         << std::endl;
         }
     } // end sim node
@@ -2230,7 +2240,7 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
             }
             else
             {
-                std::cout << world_rank << " ~ SIM: No probing renders" << std::endl;
+                std::cout << world_rank << " ~SIM: No probing renders" << std::endl;
             }
 
             log_time(start, "probing " + std::to_string(counter) + " ", world_rank);
