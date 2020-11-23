@@ -615,11 +615,14 @@ public:
       num_renders = current_render_count;
 
     int probing_it = 0;
-    while (probing_sequence.size() > probing_it && probing_sequence[probing_it] < render_offset)
+    while (   probing_sequence.size() > probing_it
+           && probing_sequence[probing_it] < render_offset)
       ++probing_it;
 
     int i = render_offset;
-    if (is_probing && probing_sequence.size() > probing_it)
+    if (probing_it == probing_sequence.size())  // case if no probing render is in batch
+      --probing_it;
+    else if (is_probing && probing_sequence.size() > probing_it)
       i = probing_sequence[probing_it]; // first probing render
 
     while (i < render_offset + num_renders)
