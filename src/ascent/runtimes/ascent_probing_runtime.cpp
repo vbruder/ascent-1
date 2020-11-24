@@ -1137,7 +1137,9 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                 id -= probing_it_sim[i];
 
                 if (id >= sim_batch_sizes[i][batch_id])
-                    std::cout << "ERROR in sim part assignment!" << std::endl;
+                    std::cout << mpi_props.rank << " ERROR in sim part assignment from " << i 
+                              << " batch " << batch_id << " with size " << sim_batch_sizes[i][batch_id] 
+                              << " and id " << id << std::endl;
 
                 if (parts_sim[i][batch_id] && parts_sim[i][batch_id]->has_child("render_file_names"))
                 {
@@ -1353,9 +1355,8 @@ void pack_and_send(Node &data, const int destination, const int tag,
 {
     Node compact_node;
     pack_node(data, compact_node);
-
-    std::cout << rank << " send to " << destination << " / " << tag-2 
-              << " with size: " << compact_node.total_bytes_compact() << std::endl;
+    // std::cout << rank << " send to " << destination << " / " << tag-2 
+    //           << " with size: " << compact_node.total_bytes_compact() << std::endl;
 
     int mpi_error = MPI_Ibsend(compact_node.data_ptr(),
                                compact_node.total_bytes_compact(),
@@ -1653,8 +1654,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
             {
                 buffer_size = calc_render_msg_size(sim_batch_sizes[i][j]); 
                 render_chunks_sim[i][j] = make_unique<Node>(DataType::uint8(buffer_size));
-                std::cout << mpi_props.rank << " | " << i << " " << j << " " << sim_batch_sizes[i][j] 
-                          << " expected render_msg_size " << buffer_size << std::endl;
+                // std::cout << mpi_props.rank << " | " << i << " " << j << " " << sim_batch_sizes[i][j] 
+                //           << " expected render_msg_size " << buffer_size << std::endl;
             }
         }
 
@@ -1808,11 +1809,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
             // inline renders
             for (auto &batch_requests : requests_inline_sim)
             {
-                std::cout << "+++ batch_requests ";
-                for (auto r : batch_requests)
-                    std::cout << r << " ";
-                std::cout << std::endl;
-
+                // std::cout << "+++ batch_requests ";
+                // for (auto r : batch_requests)
+                //     std::cout << r << " ";
+                // std::cout << std::endl;
                 if (batch_requests.size() > 0)
                 {
                     int mpi_error = MPI_Waitall(batch_requests.size(), batch_requests.data(), MPI_STATUSES_IGNORE);
