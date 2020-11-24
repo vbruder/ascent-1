@@ -899,25 +899,10 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
         if (end >= total_count - 1)  // last batch (account for odd sizes)
         {
             batch_sizes[i] = total_count - offset;
-            // corner case: last image(s) is a probing 
-            // int j = 1;
-            // while ( render_cfg.probing_count - j >= 0 
-            //         && render_cfg.probing_ids.at(render_cfg.probing_count - j) == total_count - j
-            //         && batch_sizes[i] > j)
-            // {
-            //     batch_sizes[i] -= 1;
-            //     ++j;
-            // }
         }
         else    // adapt batch size to end before a probing image 
         {
             batch_sizes[i] = size;
-
-            // bool is_next_probing = render_cfg.get_next_probing_id(offset + size, end);
-            // if (is_next_probing)
-            //     batch_sizes[i] = end - offset;
-            // else
-            //     batch_sizes[i] = size;
         }
         offset += batch_sizes[i];
         // std::cout << "get batch size: " << i << "/ " << batch_sizes[i] << " | total_count " << total_count << " | batch count " << batch_count << std::endl;
@@ -934,23 +919,6 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
         }
     }
 
-    // --- legacy code
-    // round to next image before a probing, so that we always start a batch with a probing image
-    // if (size > 0 && include_probing)
-    //     size += (render_cfg.probing_stride) - (size % (render_cfg.probing_stride));
-    // else if (size > 0)
-    //     size += (render_cfg.probing_stride - 1) - (size % (render_cfg.probing_stride - 1));
-
-    // int sum = 0;
-    // for (size_t i = 0; i < batch_sizes.size(); ++i)
-    // {
-    //     batch_sizes[i] = size;
-    //     sum += size;
-    // }
-
-    // // last batch renders the rest
-    // if (total_count - sum > 0)
-    //     batch_sizes.push_back(total_count - sum);
     return batch_sizes;
 }
 
@@ -1094,8 +1062,6 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
         // std::cout << std::endl;
     }
 
-    //     batches[i] = get_batch(g_render_counts[src_ranks[i]], render_cfg.batch_count);
-
     std::cout << mpi_props.rank << " * VIS: sort renders for compositing " << std::endl;
 
     // arrange render order
@@ -1121,12 +1087,10 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
         {
             if (print_compositing_order)
                 std::cout << "  " << i << " " << probing_it_sim[i];
-            // if (render_cfg.probing_stride && (j % render_cfg.probing_stride == 0))
             if (probing_it < render_cfg.probing_ids.size()      // probing image
                 && render_cfg.probing_ids[probing_it] == j)
             {
                 // std::cout << " PROBE ";
-                // const index_t id = j / render_cfg.probing_stride;
                 if (parts_probing[i]->has_child("render_file_names"))
                 {
                     render_ptrs[j].emplace_back(parts_probing[i]);
@@ -1140,16 +1104,11 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                         std::cout << " " << mpi_props.rank << " skip probe " << probing_it << std::endl;
                 }
 
-                {   // keep track of probing images
-                    // reset probing counter if first render in vis chunks
-                    // if (j == g_render_counts[src_ranks[i]] + probing_it_sim[i])
-                    //     probing_it_vis[i] = 0;
-
-                    if (j <= g_render_counts[src_ranks[i]] + probing_it_sim[i]) 
-                        ++probing_it_sim[i];
-                    else
-                        ++probing_it_vis[i];
-                }
+                // keep track of probing images
+                if (j <= g_render_counts[src_ranks[i]] + probing_it_sim[i]) 
+                    ++probing_it_sim[i];
+                else
+                    ++probing_it_vis[i];
                 // increase probing iterator only after processing renders from the last data set
                 if (i == my_data_recv_cnt - 1)   
                     ++probing_it;
@@ -1162,7 +1121,6 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                 for (size_t k = 0; k < sim_batch_sizes[i].size(); k++)
                 {
                     sum += sim_batch_sizes[i][k];
-                    // if (j >= render_cfg.get_render_count_from_non_probing(sum))
                     if (j >= sum + probing_it_sim[i])
                         ++batch_id;
                 }
@@ -1196,11 +1154,6 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
             else    // part rendered on this vis node
             {
                 // std::cout << " VIS ";
-                // Reset the probing counter if this is the first render in vis node chunks
-                // and this is not a probing render.
-                // if (j == g_render_counts[src_ranks[i]] + probing_it_sim[i])
-                //     probing_it_vis[i] = 0;
-
                 const index_t id = j - (g_render_counts[src_ranks[i]] + probing_it_sim[i])
                                      - probing_it_vis[i];
 
@@ -1454,10 +1407,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
     pack_node(data, data_packed);
     int my_data_size = data_packed.total_bytes_compact();
 
-#ifdef ASCENT_MPI_ENABLED
-    MPI_Barrier(mpi_props.comm_world);
-#endif
-
     if (mpi_props.rank >= mpi_props.sim_node_count) // nodes with the highest ranks are vis nodes
     {
         is_vis_node = true;
@@ -1694,7 +1643,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
             for (int j = 0; j < sim_batch_sizes[i].size(); ++j)
             {
-                buffer_size = calc_render_msg_size(sim_batch_sizes[i][j]); // render_cfg.probing_factor);
+                buffer_size = calc_render_msg_size(sim_batch_sizes[i][j]); 
                 render_chunks_sim[i][j] = make_unique<Node>(DataType::uint8(buffer_size));
                 // std::cout << mpi_props.rank << " | " << i << " " << j << " " << sim_batch_sizes[i][j] 
                 //           << " expected render_msg_size " << buffer_size << std::endl;
@@ -1729,7 +1678,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
             for (int j = 0; j < sim_batch_sizes[i].size(); ++j)
             {
                 if (sim_batch_sizes[i][j] <= 0)
-                    break;
+                {
+                    std::cout << mpi_props.rank << " * VIS: Skip receive of sim batch " << i << std::endl;
+                    continue;
+                }
 
                 int mpi_error = MPI_Irecv(render_chunks_sim[i][j]->data_ptr(),
                                           render_chunks_sim[i][j]->total_bytes_compact(),
@@ -1848,9 +1800,17 @@ void hybrid_render(const MPI_Properties &mpi_props,
             // inline renders
             for (auto &batch_requests : requests_inline_sim)
             {
-                int mpi_error = MPI_Waitall(batch_requests.size(), batch_requests.data(), MPI_STATUSES_IGNORE);
-                if (mpi_error)
-                    std::cout << "ERROR: waitall (vis node receiving inline renders) " << mpi_props.rank << std::endl;
+                std::cout << "+++ batch_requests ";
+                for (auto r : batch_requests)
+                    std::cout << r << " ";
+                std::cout << std::endl;
+
+                if (batch_requests.size() > 0)
+                {
+                    int mpi_error = MPI_Waitall(batch_requests.size(), batch_requests.data(), MPI_STATUSES_IGNORE);
+                    if (mpi_error)
+                        std::cout << "ERROR: waitall (vis node receiving inline renders) " << mpi_props.rank << std::endl;
+                }
             }
             log_time(t_start, "+ wait receive img ", mpi_props.rank);
         }
