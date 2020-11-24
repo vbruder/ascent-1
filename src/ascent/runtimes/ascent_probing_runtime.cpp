@@ -1077,8 +1077,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     std::vector<std::vector<int> > render_order(render_cfg.max_count);
     int probing_it = 0;
 
-    bool print_compositing_order = false;   // debug out for compositing sort
-    if (print_compositing_order && mpi_props.rank != 9)
+    bool print_compositing_order = true;   // debug out for compositing sort
+    if (print_compositing_order && mpi_props.rank < 8)
         print_compositing_order = false;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
@@ -1095,7 +1095,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
             if (probing_it < render_cfg.probing_ids.size()      // probing image
                 && render_cfg.probing_ids[probing_it] == j)
             {
-                // std::cout << " PROBE ";
+                if (print_compositing_order)
+                    std::cout << " PROBE ";
                 if (parts_probing[i]->has_child("render_file_names"))
                 {
                     render_ptrs[j].emplace_back(parts_probing[i]);
@@ -1120,7 +1121,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
             }
             else if (j < g_render_counts[src_ranks[i]] + probing_it_sim[i]) // part comes from sim node (inline)
             {
-                // std::cout << " SIM " << g_render_counts[src_ranks[i]] << " ";
+                if (print_compositing_order)
+                    std::cout << " SIM " << g_render_counts[src_ranks[i]] << " ";
                 int batch_id = 0;
                 int sum = 0;
                 for (size_t k = 0; k < sim_batch_sizes[i].size(); k++)
@@ -1160,7 +1162,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
             }
             else    // part rendered on this vis node
             {
-                // std::cout << " VIS ";
+                if (print_compositing_order)
+                    std::cout << " VIS ";
                 const index_t id = j - (g_render_counts[src_ranks[i]] + probing_it_sim[i])
                                      - probing_it_vis[i];
 
