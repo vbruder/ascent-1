@@ -1323,7 +1323,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
 }
 #endif
 
-// TODO: fix
+// FIXME: for active pixel encoding to work
 void convert_color_buffer(Node &data)
 {
     int size = 800*800*4;
@@ -1344,12 +1344,13 @@ void convert_color_buffer(Node &data)
 
 #ifdef ASCENT_MPI_ENABLED
 void pack_and_send(Node &data, const int destination, const int tag,
-                   const MPI_Comm comm, MPI_Request &req)
+                   const MPI_Comm comm, MPI_Request &req, const int rank)
 {
     Node compact_node;
     pack_node(data, compact_node);
 
-    std::cout << destination << " ++ sim render size: " << compact_node.total_bytes_compact() << std::endl;
+    std::cout << rank << " send to " << destination << " / " << tag-2 
+              << " with size: " << compact_node.total_bytes_compact() << std::endl;
 
     int mpi_error = MPI_Ibsend(compact_node.data_ptr(),
                                compact_node.total_bytes_compact(),
@@ -1918,7 +1919,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             {
                 pack_probing_thread = std::thread(&pack_and_send, std::ref(render_chunks_probing),
                                                   destination, TAG_PROBING, mpi_props.comm_world,
-                                                  std::ref(request_probing));
+                                                  std::ref(request_probing), mpi_props.rank);
             }
 
             log_global_time("end sendData", mpi_props.rank);
@@ -1981,7 +1982,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
                                               destination,
                                               TAG_INLINE + i, mpi_props.comm_world,
-                                              std::ref(requests[i])));
+                                              std::ref(requests[i]), mpi_props.rank));
 
                 t_end = std::chrono::system_clock::now();
                 sum_copy += t_end - t_render;
