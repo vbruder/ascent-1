@@ -306,11 +306,11 @@ struct RenderConfig
     {
         if (sampling_method == "random")
         {
-            probing_count = int(probing_factor * max_count);
-
+            assert(probing_factor >= 0.0 && probing_factor <= 1.0);
             std::srand(42);
             const int range_from  = 0;
             const int range_to    = max_count;
+            probing_count = int(probing_factor * max_count);
             // std::random_device rand_dev;
             // std::mt19937 generator(rand_dev());
             // std::uniform_int_distribution<int> distr(range_from, range_to);
@@ -320,7 +320,12 @@ struct RenderConfig
             {
                 // probing_ids[i] = distr(generator);
                 // worse-is-better solution: just a simple random sequence, no fanciness required
-                int r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
+                int r; 
+                do
+                {
+                r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
+                } while (std::find(probing_ids.begin(), probing_ids.end(), r) 
+                        != probing_ids.end());             // avoid double entries
                 probing_ids[i] = r;
             }
             std::sort(probing_ids.begin(), probing_ids.end());
