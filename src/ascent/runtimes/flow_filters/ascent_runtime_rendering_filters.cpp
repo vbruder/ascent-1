@@ -1023,6 +1023,8 @@ DefaultRender::execute()
               if ((*meta)["is_probing"].as_int32())
                 is_probing = true;
             }
+            if (probing_factor > 1.0)
+              ASCENT_ERROR("probing_factor must be in range [0,1].");
 
             std::string sampling_method;
             if (meta->has_path("sampling_method"))
@@ -1037,7 +1039,12 @@ DefaultRender::execute()
                 probing_sequence.resize(probing_count);
                 for (int i = 0; i < probing_count; ++i)
                 {
-                  int r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
+                  int r; 
+                  do
+                  {
+                    r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
+                  } while (std::find(probing_sequence.begin(), probing_sequence.end(), r) 
+                            != probing_sequence.end());             // avoid double entries
                   probing_sequence[i] = r;
                 }
                 std::sort(probing_sequence.begin(), probing_sequence.end());
