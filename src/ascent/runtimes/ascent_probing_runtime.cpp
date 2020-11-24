@@ -1349,6 +1349,8 @@ void pack_and_send(Node &data, const int destination, const int tag,
     Node compact_node;
     pack_node(data, compact_node);
 
+    std::cout << destination << " ++ sim render size: " << compact_node.total_bytes_compact() << std::endl;
+
     int mpi_error = MPI_Ibsend(compact_node.data_ptr(),
                                compact_node.total_bytes_compact(),
                                MPI_BYTE,
@@ -1645,8 +1647,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
             {
                 buffer_size = calc_render_msg_size(sim_batch_sizes[i][j]); 
                 render_chunks_sim[i][j] = make_unique<Node>(DataType::uint8(buffer_size));
-                // std::cout << mpi_props.rank << " | " << i << " " << j << " " << sim_batch_sizes[i][j] 
-                //           << " expected render_msg_size " << buffer_size << std::endl;
+                std::cout << mpi_props.rank << " | " << i << " " << j << " " << sim_batch_sizes[i][j] 
+                          << " expected render_msg_size " << buffer_size << std::endl;
             }
         }
 
