@@ -878,7 +878,7 @@ int calc_render_msg_size(const int render_count, const int width = 800, const in
  * @return Vector containing all batch sizes.
  */
 std::vector<int> get_batch_sizes(const int render_count, const RenderConfig render_cfg,
-                                 const bool include_probing, const int min_batch_size = 32)
+                                 const bool include_probing, const int min_batch_size = 24)
 {
     // assert(render_cfg.batch_count > 0 && render_cfg.probing_stride > 2);
     if (render_count <= 0)
@@ -893,8 +893,7 @@ std::vector<int> get_batch_sizes(const int render_count, const RenderConfig rend
 
     int total_count = render_cfg.get_render_count_from_non_probing(render_count);
 
-    int size = total_count / batch_count;
-
+    int size = int(std::round(total_count / double(batch_count)));
 
     int offset = 0;
     int end = 0;
@@ -1078,7 +1077,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     int probing_it = 0;
 
     bool print_compositing_order = true;   // debug out for compositing sort
-    if (print_compositing_order && mpi_props.rank < 8)
+    if (print_compositing_order && mpi_props.rank < 9)
         print_compositing_order = false;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
@@ -1139,9 +1138,9 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                 id -= probing_it_sim[i];
 
                 if (id >= sim_batch_sizes[i][batch_id])
-                    std::cout << mpi_props.rank << " ERROR in sim part assignment from " << i 
+                    std::cout << mpi_props.rank << " ! ERROR in sim part assignment from " << i 
                               << " batch " << batch_id << " with size " << sim_batch_sizes[i][batch_id] 
-                              << " and id " << id << std::endl;
+                              << " and id " << id << " image " << j << std::endl;
 
                 if (parts_sim[i][batch_id] && parts_sim[i][batch_id]->has_child("render_file_names"))
                 {
