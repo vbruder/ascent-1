@@ -878,7 +878,7 @@ int calc_render_msg_size(const int render_count, const int width = 800, const in
  * @return Vector containing all batch sizes.
  */
 std::vector<int> get_batch_sizes(const int render_count, const RenderConfig render_cfg,
-                                 const bool include_probing, const int min_batch_size = 24)
+                                 const bool include_probing, const int min_batch_size = 32)
 {
     // assert(render_cfg.batch_count > 0 && render_cfg.probing_stride > 2);
     if (render_count <= 0)
@@ -1076,7 +1076,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     std::vector<std::vector<int> > render_order(render_cfg.max_count);
     int probing_it = 0;
 
-    bool print_compositing_order = true;   // debug out for compositing sort
+    bool print_compositing_order = false;   // debug out for compositing sort
     if (print_compositing_order && mpi_props.rank < 9)
         print_compositing_order = false;
 
