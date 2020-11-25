@@ -15,8 +15,8 @@
  timestep_rise=1.1
  max_timestep=1.0
  
- end_step=800
- end_time=800.1
+ end_step=3000
+ end_time=3000.1
  test_problem 1
  
  visit_frequency=100
