@@ -1076,7 +1076,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     std::vector<std::vector<int> > render_order(render_cfg.max_count);
     int probing_it = 0;
 
-    bool print_compositing_order = true;   // debug out for compositing sort
+    bool print_compositing_order = false;   // debug out for compositing sort
     if (print_compositing_order && mpi_props.rank < 9)
         print_compositing_order = false;
 
