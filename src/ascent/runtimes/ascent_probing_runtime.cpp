@@ -1077,7 +1077,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     int probing_it = 0;
 
     bool print_compositing_order = false;   // debug out for compositing sort
-    if (print_compositing_order && mpi_props.rank < 9)
+    if (print_compositing_order && mpi_props.rank < 8)
         print_compositing_order = false;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
@@ -2109,10 +2109,17 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
                     ASCENT_ERROR("action 'probing' missing child 'insitu_type'");
 
                 if (action["probing"].has_path("sampling_method"))
+                {
                     sampling_method = action["probing/sampling_method"].as_string();
                     if (sampling_method != "random" && sampling_method != "systematic")
                         ASCENT_ERROR("Unknown sampling_method '" + sampling_method 
                                      + "'. Supported options are 'random' and 'systematic'.");
+                }
+                else
+                {
+                    if (probing_factor > 0.0 && probing_factor < 1.0)
+                        std::cout << "Defaulting to sampling method 'random'." << std::endl;
+                }
 
                 if (action["probing"].has_path("batch_count"))
                     batch_count = action["probing/batch_count"].to_int();

@@ -1577,15 +1577,14 @@ void AscentRuntime::Execute(const conduit::Node &actions)
           ConnectSource();
         }
 
-
         m_previous_actions = actions;
 
         PopulateMetadata(); // add metadata so filters can access it
 
         w.info(m_info["flow_graph"]);
         m_info["actions"] = actions;
-        //w.print();
-        //std::cout<<w.graph().to_dot();
+        // w.print();
+        // std::cout<<w.graph().to_dot();
         w.graph().save_dot_html("ascent_flow_graph.html");
 
 #if defined(ASCENT_VTKM_ENABLED)
