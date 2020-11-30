@@ -340,7 +340,7 @@ public:
       // artificial load imbalance
       if (sleep)
       {
-        // std::cout << "sleep " << sleep << std::endl;
+        std::cout << "! Sleeping " << sleep << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(sleep*renders.size()));
       }
 
@@ -627,12 +627,13 @@ public:
 
     while (i < render_offset + num_renders)
     {
-      if (probing_sequence.size() <= probing_it)
+      if (probing_it >= 0 && probing_sequence.size() <= probing_it)
       {
-        ASCENT_ERROR("Missing sampling sequence in runtime rendering filters.");
+        std::cout << "ERROR: Missing sampling sequence in runtime rendering filters. No renders added!" 
+                  << std::endl;
         break;
       }
-      if (!is_probing && (i == probing_sequence[probing_it]))
+      if (!is_probing && (probing_it >= 0) && (i == probing_sequence[probing_it]))
       {
         ++i;
         if (probing_sequence.size() > probing_it + 1)
@@ -1026,7 +1027,7 @@ DefaultRender::execute()
             if (probing_factor > 1.0)
               ASCENT_ERROR("probing_factor must be in range [0,1].");
 
-            std::string sampling_method;
+            std::string sampling_method = "random";   // default to random
             if (meta->has_path("sampling_method"))
             {
               sampling_method = (*meta)["sampling_method"].as_string();
@@ -1049,7 +1050,7 @@ DefaultRender::execute()
                 }
                 std::sort(probing_sequence.begin(), probing_sequence.end());
               }
-              else if (stride > 0)  // systematic
+              else if (sampling_method == "systematic" && stride > 0 && is_probing)
               {
                 int pos = 0;
                 do 
