@@ -2284,6 +2284,10 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
     }
 
     log_global_time("end ascent", world_rank);
+
+    // Sync in case of inline to avoid gigantic log files for the idleing vis nodes.
+    if (insitu_type == "inline")
+        MPI_Barrier(mpi_comm_world);
     
 #endif
 }
