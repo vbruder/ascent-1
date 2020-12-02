@@ -1053,6 +1053,7 @@ void AscentRuntime::PopulateMetadata()
   // add global state meta data to the registry
   const int num_domains = m_source.number_of_children();
   int cycle = 0;
+  int vis_iteration = 0;
   float time = 0.f;
 
   for (int i = 0; i < num_domains; ++i)
@@ -1061,6 +1062,10 @@ void AscentRuntime::PopulateMetadata()
     if(dom.has_path("state/cycle"))
     {
       cycle = dom["state/cycle"].to_int32();
+    }
+    if(dom.has_path("state/vis_iteration"))
+    {
+      vis_iteration = dom["state/vis_iteration"].to_int32();
     }
     if (dom.has_path("state/time"))
     {
@@ -1076,6 +1081,7 @@ void AscentRuntime::PopulateMetadata()
 
   Node *meta = w.registry().fetch<Node>("metadata");
   (*meta)["cycle"] = cycle;
+  (*meta)["vis_iteration"] = vis_iteration;
   (*meta)["time"] = time;
   (*meta)["refinement_level"] = m_refinement_level;
   (*meta)["ghost_field"] = m_ghost_fields;
@@ -1594,6 +1600,13 @@ void AscentRuntime::Execute(const conduit::Node &actions)
         {
           cycle = (*meta)["cycle"].to_int32();
         }
+        int vis_iteration = 0;
+        if(meta->has_path("vis_iteration"))
+        {
+          vis_iteration = (*meta)["vis_iteration"].to_int32();
+          m_info["vis_iteration"] = vis_iteration;
+        }
+
         std::stringstream ss;
         ss<<"cycle_"<<cycle;
         vtkh::DataLogger::GetInstance()->OpenLogEntry(ss.str());
