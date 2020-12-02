@@ -286,6 +286,7 @@ struct RenderConfig
     int probing_count = 0;
     int non_probing_count = 0;
     int batch_count = 1;
+    int vis_iteration = 0;
     std::vector<int> probing_ids;
 
     const static int WIDTH = 800;
@@ -297,17 +298,18 @@ struct RenderConfig
      */
     RenderConfig(const int max_render_count, const double probing_factor = 0.0,
                  const std::string &insitu_type = "hybrid", const int batch_count = 1,
-                 const std::string &sampling_method = "random")
+                 const std::string &sampling_method = "random", const int vis_iteration = 0)
      : max_count(max_render_count)
      , probing_factor(probing_factor)
      , insitu_type(insitu_type)
      , batch_count(batch_count)
      , sampling_method(sampling_method)
+     , vis_iteration(vis_iteration)
     {
         if (sampling_method == "random")
         {
             assert(probing_factor >= 0.0 && probing_factor <= 1.0);
-            std::srand(42);
+            std::srand(42 + vis_iteration);
             const int range_from  = 0;
             const int range_to    = max_count;
             probing_count = int(probing_factor * max_count);
@@ -323,13 +325,14 @@ struct RenderConfig
                 int r; 
                 do
                 {
-                r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
+                    r = (double(std::rand()) / double(RAND_MAX - 1)) * (range_to - range_from + 1) + range_from;
                 } while (std::find(probing_ids.begin(), probing_ids.end(), r) 
                         != probing_ids.end());             // avoid double entries
                 probing_ids[i] = r;
             }
             std::sort(probing_ids.begin(), probing_ids.end());
 
+            // DEBUG: random sequence
             // std::cout << "random sequence: ";
             // for (auto &a : probing_ids)
             //     std::cout << a << " ";
@@ -1077,7 +1080,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     int probing_it = 0;
 
     bool print_compositing_order = false;   // debug out for compositing sort
-    if (print_compositing_order && mpi_props.rank < 8)
+    if (print_compositing_order && mpi_props.rank < 9)
         print_compositing_order = false;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
@@ -1202,7 +1205,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     displacements.pop_back();
 
     unsigned int thread_count = std::thread::hardware_concurrency();
-    thread_count = std::min(thread_count, 16u);     // limit to 16 consumers to avoid overhead
+    thread_count = std::min(thread_count, 24u);     // limit to 24 consumers to avoid overhead
     std::mutex mu;
     const int max_buffer_size = thread_count * 4;   // buffer a max of 4 images per thread
     std::condition_variable cond;
@@ -1216,7 +1219,6 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
 
     std::vector<vtkh::Compositor> compositors(render_cfg.max_count);
     std::vector<vtkh::Image *> results(render_cfg.max_count);
-    std::vector<std::thread> threads;
 
     // loop over images (camera positions)
     for (int j = 0; j < render_cfg.max_count; ++j)
@@ -1310,6 +1312,10 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
 
             if (j == render_cfg.max_count - 1)  // last image -> kill consumers
             {
+                log_time(t_start0, "+ compositing total ", mpi_props.rank);
+                log_global_time("end compositing", mpi_props.rank);
+
+                log_global_time("begin save", mpi_props.rank);
                 std::cout << "Clean up consumers." << std::endl;
                 // poison consumers for cleanup
                 for (int i = 0; i < consumers.size(); ++i)
@@ -1322,13 +1328,17 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                 }
                 for (auto& t : consumers)
                     t.join();
+                log_global_time("end save", mpi_props.rank);
             }
         }
         // print_time(t_start, " * VIS: end save ", mpi_props.rank);
     }
 
-    log_time(t_start0, "+ compositing total ", mpi_props.rank);
-    log_global_time("end compositing", mpi_props.rank);
+    if (my_vis_rank != 0)
+    {
+        log_time(t_start0, "+ compositing total ", mpi_props.rank);
+        log_global_time("end compositing", mpi_props.rank);
+    }
 }
 #endif
 
@@ -1732,7 +1742,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
             unpack_node(*datasets[i], dataset);
 
             Node verify_info;
-            if (conduit::blueprint::mesh::verify(dataset, verify_info))
+            // if (conduit::blueprint::mesh::verify(dataset, verify_info))
             {
                 // vis node needs to render what is left
                 const int render_count_sim = render_cfg.get_render_count_from_non_probing(g_render_counts[src_ranks[i]]);
@@ -1781,12 +1791,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
                 log_time(start, "+ render vis " + std::to_string(current_render_count - probing_count_part) + " ", mpi_props.rank);
             }
-            else
-            {
-                std::cout << "ERROR: rank " << mpi_props.rank 
-                          << " * VIS: could not verify (conduit::blueprint::mesh::verify) the sent data." 
-                          << std::endl;
-            }
+            // else
+            // {
+            //     std::cout << "ERROR: rank " << mpi_props.rank 
+            //               << " * VIS: could not verify (conduit::blueprint::mesh::verify) the sent data." 
+            //               << std::endl;
+            //     verify_info.print();
+            // }
         }   // for: render all datasets sent
         
         auto t_render = std::chrono::system_clock::now();
@@ -1874,7 +1885,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
         // std::cout << mpi_props.rank << "  ~SIM: sends extract to "
         //           <<  node_map[mpi_props.rank] + mpi_props.sim_node_count << std::endl;
         Node verify_info;
-        if (conduit::blueprint::mesh::verify(data, verify_info))
+        // if (conduit::blueprint::mesh::verify(data, verify_info))
         {
             std::vector<int> batch_sizes = get_batch_sizes(g_render_counts[mpi_props.rank],
                                                            render_cfg, true);
@@ -2027,8 +2038,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 if (send_data_thread.joinable())
                     send_data_thread.join();
 
-                // FIXME: possible MPI_Waitall error here?
-
                 // render chunks
                 int mpi_error = MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
                 if (mpi_error)
@@ -2041,12 +2050,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
             for (int i = 0; i < batch_sizes.size(); i++)
                 ascent_renders[i].close();
         }
-        else
-        {
-            std::cout << "ERROR: rank " << mpi_props.rank 
-                        << "  ~SIM: could not verify (conduit::blueprint::mesh::verify) the sent data." 
-                        << std::endl;
-        }
+        // else
+        // {
+        //     std::cout << "ERROR: rank " << mpi_props.rank 
+        //                 << "  ~SIM: could not verify (conduit::blueprint::mesh::verify) the sent data." 
+        //                 << std::endl;
+        //     verify_info.print();
+        // }
     } // end sim node
 
     log_time(start0, "___splitAndRun ", mpi_props.rank);
@@ -2191,6 +2201,7 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
     double total_probing_time = 0.0;
     Ascent ascent_probing;
     Node render_chunks;
+    
     // run probing only if this is a sim node
     if (world_rank < sim_count && (probing_factor > 0.0 || insitu_type == "inline"))
     {
@@ -2214,10 +2225,10 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
         ascent_probing.execute(probe_actions); // pass on actions
         // print_time(t_render, " * probing render ", world_rank, 1.0 / std::round(probing_factor * phi * theta));
 
+        conduit::Node info;
+        ascent_probing.info(info);
         if (insitu_type != "inline")
         {
-            conduit::Node info;
-            ascent_probing.info(info);
             NodeIterator itr = info["render_times"].children();
             int counter = 0;
             while (itr.has_next())
@@ -2255,9 +2266,11 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
 #if ASCENT_MPI_ENABLED
     if (!is_inline)
     {
+        // std::cout << world_rank << " vis cycle " << m_data["state/vis_iteration"].to_int32() << std::endl;
         MPI_Properties mpi_props(world_size, world_rank, sim_count, world_size - sim_count,
                                  mpi_comm_world, vis_comm, vis_group);
-        RenderConfig render_cfg(phi*theta, probing_factor, insitu_type, batch_count, sampling_method);
+        RenderConfig render_cfg(phi*theta, probing_factor, insitu_type, batch_count, 
+                                sampling_method, m_data["state/vis_iteration"].to_int32());
         if (world_rank == 0)
         {
             std::cout << "=== Probing " << render_cfg.probing_count << "/" << render_cfg.max_count

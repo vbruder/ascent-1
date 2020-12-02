@@ -47,7 +47,7 @@ SUBROUTINE hydro
     end function c_time
   end interface
 
-  INTEGER         :: loc(1),err,rank,size,color,rank_split,sim_vis_comm,is_visit
+  INTEGER         :: loc(1),err,rank,size,color,rank_split,sim_vis_comm,is_visit,vis_iteration
   INTEGER(kind=8) :: unix
   INTEGER         :: buffer(0:7)
   REAL(KIND=8)    :: timer,timerstart,wall_clock,step_clock,sim_timer,cycle_time
@@ -85,6 +85,7 @@ SUBROUTINE hydro
   ENDIF
   timerstart = timer()
   sim_timer = timerstart
+  vis_iteration = 0
 
   DO
     
@@ -105,7 +106,8 @@ SUBROUTINE hydro
       CALL reset_field()
     ELSE
       IF(time.LT.end_time.OR.step.LT.end_step) THEN
-        CALL visit(my_ascent, 0)  ! TODO: avoid last call time+g_small.GT.end_time.OR.step.GE.end_step
+        CALL visit(my_ascent, 0, vis_iteration)  ! TODO: avoid last call time+g_small.GT.end_time.OR.step.GE.end_step
+        vis_iteration = vis_iteration + 1
         CYCLE
       ENDIF
     ENDIF
@@ -160,7 +162,8 @@ SUBROUTINE hydro
         WRITE(g_out_stamps,*) 'end sim ', unix
         WRITE(g_out_times,*) '       sim ', step, timer()-sim_timer
 
-        CALL visit(my_ascent, cycle_time)
+        CALL visit(my_ascent, cycle_time, vis_iteration)
+        vis_iteration = vis_iteration + 1
 
         wall_clock=timer() - timerstart
         WRITE(g_out_times,*) '       vis ', step, timer()-vis_time
@@ -180,7 +183,8 @@ SUBROUTINE hydro
           cycle_time = cycle_time / initial_steps * visit_frequency
         ENDIF
 
-        CALL visit(my_ascent, cycle_time)
+        CALL visit(my_ascent, cycle_time, vis_iteration)
+        vis_iteration = vis_iteration + 1
 
         wall_clock=timer() - timerstart
         WRITE(g_out_times,*) '       vis ', step, timer()-vis_time

@@ -22,7 +22,7 @@
 !>  The ideal gas and viscosity routines are invoked to make sure this data is
 !>  up to data with the current energy, density and velocity.
 
-SUBROUTINE visit(my_ascent, sim_time)
+SUBROUTINE visit(my_ascent, sim_time, vis_iteration)
 
   USE clover_module
   USE update_halo_module
@@ -73,6 +73,7 @@ SUBROUTINE visit(my_ascent, sim_time)
   TYPE(C_PTR) reset_act
 
   INTEGER(8) :: nnodes, ncells
+  INTEGER(4) :: vis_iteration
   REAL(8), ALLOCATABLE :: ghost_flags(:,:,:)
   REAL(8), DIMENSION(1) :: array
   REAL(8) :: sim_time
@@ -119,12 +120,14 @@ SUBROUTINE visit(my_ascent, sim_time)
 
     sim_actions = conduit_node_create()
     add_scene_act = conduit_node_append(sim_actions)
-    CALL conduit_node_set_path_char8_str(add_scene_act,"action", "add_scenes")
+    ! CALL conduit_node_set_path_char8_str(add_scene_act,"action", "add_scenes")
 
-    scenes = conduit_node_fetch(add_scene_act,"scenes")
-    CALL conduit_node_set_path_char8_str(scenes,"s1/plots/p1/type", "volume")
-    CALL conduit_node_set_path_char8_str(scenes,"s1/plots/p1/field", "energy")
+    ! scenes = conduit_node_fetch(add_scene_act,"scenes")
+    ! CALL conduit_node_set_path_char8_str(scenes,"s1/plots/p1/type", "volume")
+    ! CALL conduit_node_set_path_char8_str(scenes,"s1/plots/p1/field", "energy")
+    CALL conduit_node_set_path_int32(sim_data,"state/vis_iteration", vis_iteration)
 
+    CALL ascent_publish(my_ascent, sim_data)  
     CALL ascent_execute(my_ascent, sim_actions)
 
     CALL conduit_node_destroy(sim_actions)
@@ -189,6 +192,7 @@ SUBROUTINE visit(my_ascent, sim_time)
         CALL conduit_node_set_path_float64(sim_data,"state/sim_time", sim_time)
         CALL conduit_node_set_path_int32(sim_data,"state/domain_id", parallel%task)
         CALL conduit_node_set_path_int32(sim_data,"state/cycle", step)
+        CALL conduit_node_set_path_int32(sim_data,"state/vis_iteration", vis_iteration)
         CALL conduit_node_set_path_char8_str(sim_data,"coordsets/coords/type", "rectilinear")
 
         CALL conduit_node_set_path_float64_ptr(sim_data,"coordsets/coords/values/x", chunks(c)%field%vertexx, gnxv*1_8)

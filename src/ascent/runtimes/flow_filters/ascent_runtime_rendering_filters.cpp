@@ -957,8 +957,13 @@ DefaultRender::execute()
 
     Node * meta = graph().workspace().registry().fetch<Node>("metadata");
 
-    int cycle = 0;
+    int vis_iteration = 0;
+    if(meta->has_path("vis_iteration"))
+    {
+      vis_iteration = (*meta)["vis_iteration"].as_int32();
+    }
 
+    int cycle = 0;
     if(meta->has_path("cycle"))
     {
       cycle = (*meta)["cycle"].as_int32();
@@ -1033,7 +1038,7 @@ DefaultRender::execute()
               sampling_method = (*meta)["sampling_method"].as_string();
               if (sampling_method == "random")
               {
-                std::srand(42);
+                std::srand(42 + vis_iteration);
                 const int range_from  = 0;
                 const int range_to    = full_render_count;
                 const int probing_count = int(probing_factor * full_render_count);
@@ -1059,7 +1064,8 @@ DefaultRender::execute()
                   pos += stride;
                 } while (pos < full_render_count);
               }
-              
+
+              // DEBUG: random sequence              
               // std::cout << "probing sequence: ";
               // for (auto &a : probing_sequence)
               //     std::cout << a << " ";
