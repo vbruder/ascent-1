@@ -209,6 +209,37 @@ void ProbingRuntime::Publish(const conduit::Node &data)
 
     // create our own tree, with all data zero copied.
     m_data.set_external(data);
+
+    if (m_data.has_child("state"))
+    {
+        if (m_data["state"].has_child("vis_iteration"))
+        {
+            m_vis_iteration = m_data["state/vis_iteration"].to_int32();
+            std::cout << "VIS ITERATION " << m_vis_iteration << std::endl;
+        }
+        if (m_data["state"].has_child("sim_time"))
+        {
+            m_sim_time = m_data["state/sim_time"].to_float();
+            std::cout << "SIM TIME " << m_sim_time << std::endl;
+        }
+    }
+    else if (m_data[0].has_child("state")) // multi domain case, only using domain 0 atm
+    {
+        if (m_data[0]["state"].has_child("vis_iteration"))
+        {
+            m_vis_iteration = m_data[0]["state/vis_iteration"].to_int32();
+            std::cout << "[0] VIS ITERATION " << m_vis_iteration << std::endl;
+        }
+        if (m_data[0]["state"].has_child("sim_time"))
+        {
+            m_sim_time = m_data[0]["state/sim_time"].to_float();
+            std::cout << "[0] SIM TIME " << m_sim_time << std::endl;
+        }
+    }
+    else
+    {
+        std::cout << "WARNING: No state (sim time, vis iteration) found in data." << std::endl;
+    }
 }
 
 
@@ -287,6 +318,7 @@ struct RenderConfig
     int non_probing_count = 0;
     int batch_count = 1;
     int vis_iteration = 0;
+    float sim_time = 0.f;
     std::vector<int> probing_ids;
 
     const static int WIDTH = 800;
@@ -298,13 +330,15 @@ struct RenderConfig
      */
     RenderConfig(const int max_render_count, const double probing_factor = 0.0,
                  const std::string &insitu_type = "hybrid", const int batch_count = 1,
-                 const std::string &sampling_method = "random", const int vis_iteration = 0)
+                 const std::string &sampling_method = "random", const int vis_iteration = 0,
+                 const float sim_time = 0.f)
      : max_count(max_render_count)
      , probing_factor(probing_factor)
      , insitu_type(insitu_type)
      , batch_count(batch_count)
      , sampling_method(sampling_method)
      , vis_iteration(vis_iteration)
+     , sim_time(sim_time)
     {
         if (sampling_method == "random")
         {
@@ -1421,11 +1455,11 @@ void hybrid_render(const MPI_Properties &mpi_props,
     float my_avg_probing_time = 0.f;
     float my_render_overhead = 0.f;
     int skipped_render = 0;
-    float my_sim_estimate = 0.f;
-    if (data.has_child("state/sim_time"))
-        my_sim_estimate = data["state/sim_time"].to_float();
-    else
-        std::cout << "WARNING: Missing state/sim_time in data node." << std::endl;
+    float my_sim_estimate = render_cfg.sim_time;
+    // if (data.has_child("state/sim_time"))
+    //     my_sim_estimate = data["state/sim_time"].to_float();
+    // else
+    //     std::cout << "WARNING: Missing state/sim_time in data node." << std::endl;
     std::cout << mpi_props.rank << " : sim time estimate " << my_sim_estimate << std::endl;
 
     Node data_packed;
@@ -2262,7 +2296,9 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
     }
     else
     {
-        render_times.push_back(100.f); // dummy value for in transit only test
+        m_data.print();
+
+        render_times.push_back(100.f); // dummy value for in transit only
         total_probing_time = 100.f;
     }
 
@@ -2270,16 +2306,16 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
 #if ASCENT_MPI_ENABLED
     if (!is_inline)
     {
-        int vis_iteration = 0;
-        if (m_data.has_child("state/vis_iteration"))
-            vis_iteration = m_data["state/vis_iteration"].to_float();
-        else
-            std::cout << "WARNING: Missing state/vis_iteration in data node." << std::endl; 
+        // int vis_iteration = 0;
+        // if (m_data.has_child("state") && m_data["state"].has_child("vis_iteration"))
+        //     vis_iteration = m_data["state/vis_iteration"].to_int32();
+        // else
+        //     std::cout << "WARNING: Missing state/vis_iteration in data node." << std::endl; 
         // std::cout << world_rank << " vis cycle " << vis_iteration << std::endl;
         MPI_Properties mpi_props(world_size, world_rank, sim_count, world_size - sim_count,
                                  mpi_comm_world, vis_comm, vis_group);
         RenderConfig render_cfg(phi*theta, probing_factor, insitu_type, batch_count, 
-                                sampling_method, vis_iteration);
+                                sampling_method, m_vis_iteration, m_sim_time);
         if (world_rank == 0)
         {
             std::cout << "=== Probing " << render_cfg.probing_count << "/" << render_cfg.max_count

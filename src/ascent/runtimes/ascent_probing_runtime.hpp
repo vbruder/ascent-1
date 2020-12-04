@@ -85,6 +85,9 @@ private:
     conduit::Node     m_runtime_options;
     // conduit node that (externally) holds the data from the simulation
     conduit::Node     m_data;
+
+    int m_vis_iteration = 0;
+    float m_sim_time = 0.f;
 };
 
 //-----------------------------------------------------------------------------

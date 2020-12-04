@@ -189,15 +189,16 @@ SUBROUTINE visit(my_ascent, sim_time, vis_iteration)
         
 
         CALL conduit_node_set_path_float64(sim_data,"state/time", time)
-        CALL conduit_node_set_path_float64(sim_data,"state/sim_time", sim_time)
         CALL conduit_node_set_path_int32(sim_data,"state/domain_id", parallel%task)
         CALL conduit_node_set_path_int32(sim_data,"state/cycle", step)
+        CALL conduit_node_set_path_float64(sim_data,"state/sim_time", sim_time)
         CALL conduit_node_set_path_int32(sim_data,"state/vis_iteration", vis_iteration)
+        
         CALL conduit_node_set_path_char8_str(sim_data,"coordsets/coords/type", "rectilinear")
-
         CALL conduit_node_set_path_float64_ptr(sim_data,"coordsets/coords/values/x", chunks(c)%field%vertexx, gnxv*1_8)
         CALL conduit_node_set_path_float64_ptr(sim_data,"coordsets/coords/values/y", chunks(c)%field%vertexy, gnyv*1_8)
         CALL conduit_node_set_path_float64_ptr(sim_data,"coordsets/coords/values/z", chunks(c)%field%vertexz, gnzv*1_8)
+
         CALL conduit_node_set_path_char8_str(sim_data,"topologies/mesh/type", "rectilinear")
         CALL conduit_node_set_path_char8_str(sim_data,"topologies/mesh/coordset", "coords")
         ! ghost zone flags
