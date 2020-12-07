@@ -133,7 +133,7 @@ SUBROUTINE start
   ENDDO
   
   advect_x=.TRUE.
-  
+
   CALL clover_barrier
   
   ! Do no profile the start up costs otherwise the total times will not add up
