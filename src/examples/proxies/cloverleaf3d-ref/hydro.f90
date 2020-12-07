@@ -49,7 +49,7 @@ SUBROUTINE hydro
 
   INTEGER         :: loc(1),err,rank,size,color,rank_split,sim_vis_comm,is_visit,vis_iteration
   INTEGER(kind=8) :: unix
-  INTEGER         :: buffer(0:7)
+  INTEGER         :: buffer(0:parallel%max_task - 1)
   REAL(KIND=8)    :: timer,timerstart,wall_clock,step_clock,sim_timer,cycle_time
 
   REAL(KIND=8)    :: grind_time,cells,rstep
@@ -62,6 +62,8 @@ SUBROUTINE hydro
 
   TYPE(C_PTR) my_ascent
   TYPE(C_PTR) ascent_opts
+
+  ! WRITE(g_out,*) 'CLOVER: ', parallel%task
 
   my_ascent   = ascent_create()
   ascent_opts = conduit_node_create()
@@ -97,6 +99,7 @@ SUBROUTINE hydro
     ! only on sim nodes
     ! IF(parallel%task.LT.parallel%max_task)THEN
     IF(MPI_COMM_NULL.NE.parallel%sim_comm)THEN
+      ! WRITE(g_out,*) 'CLOVER: sim ', parallel%sim_comm
       CALL timestep()
       CALL PdV(.TRUE.)
       CALL accelerate()
@@ -106,6 +109,7 @@ SUBROUTINE hydro
       CALL reset_field()
     ELSE
       IF(time.LT.end_time.OR.step.LT.end_step) THEN
+        ! WRITE(g_out,*) 'CLOVER: vis ', parallel%sim_comm
         CALL visit(my_ascent, 0, vis_iteration)  ! TODO: avoid last call time+g_small.GT.end_time.OR.step.GE.end_step
         vis_iteration = vis_iteration + 1
         CYCLE
@@ -143,7 +147,10 @@ SUBROUTINE hydro
       ENDIF
 
       ! WRITE(g_out,*) 'CLOVER: sync vis ', step
+        
       CALL MPI_Allgather(is_visit, 1, MPI_INTEGER, buffer, 1, MPI_INTEGER, parallel%sim_comm, err)
+      ! WRITE(g_out,*) '_CLOVER: ', is_visit
+      ! WRITE(g_out,*) '_CLOVER: ', minval(buffer)
       ! do another cycle until all ranks are above time trigger
       IF (is_visit.GE.1 .AND. minval(buffer).LE.0) THEN 
         ! WRITE(g_out,*) 'CLOVER: cycle ', step

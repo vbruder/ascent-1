@@ -142,13 +142,12 @@ SUBROUTINE initialise
      WRITE(g_out,*) 'Initialising and generating'
      WRITE(g_out,*)
   ENDIF
-
+  
   CALL read_input()
-
+  
   CALL clover_barrier
-
+  
   step=0
-
   CALL start
   
   CALL clover_barrier

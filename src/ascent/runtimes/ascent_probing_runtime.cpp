@@ -215,12 +215,12 @@ void ProbingRuntime::Publish(const conduit::Node &data)
         if (m_data["state"].has_child("vis_iteration"))
         {
             m_vis_iteration = m_data["state/vis_iteration"].to_int32();
-            std::cout << "VIS ITERATION " << m_vis_iteration << std::endl;
+            // std::cout << "VIS ITERATION " << m_vis_iteration << std::endl;
         }
         if (m_data["state"].has_child("sim_time"))
         {
             m_sim_time = m_data["state/sim_time"].to_float();
-            std::cout << "SIM TIME " << m_sim_time << std::endl;
+            // std::cout << "SIM TIME " << m_sim_time << std::endl;
         }
     }
     else if (m_data[0].has_child("state")) // multi domain case, only using domain 0 atm
@@ -228,12 +228,12 @@ void ProbingRuntime::Publish(const conduit::Node &data)
         if (m_data[0]["state"].has_child("vis_iteration"))
         {
             m_vis_iteration = m_data[0]["state/vis_iteration"].to_int32();
-            std::cout << "[0] VIS ITERATION " << m_vis_iteration << std::endl;
+            // std::cout << "[0] VIS ITERATION " << m_vis_iteration << std::endl;
         }
         if (m_data[0]["state"].has_child("sim_time"))
         {
             m_sim_time = m_data[0]["state/sim_time"].to_float();
-            std::cout << "[0] SIM TIME " << m_sim_time << std::endl;
+            // std::cout << "[0] SIM TIME " << m_sim_time << std::endl;
         }
     }
     else
@@ -1113,8 +1113,8 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     std::vector<std::vector<int> > render_order(render_cfg.max_count);
     int probing_it = 0;
 
-    bool print_compositing_order = false;   // debug out for compositing sort
-    if (print_compositing_order && mpi_props.rank < 9)
+    bool print_compositing_order = false;   // print debug out for compositing sort
+    if (print_compositing_order && mpi_props.rank != 27)
         print_compositing_order = false;
 
     for (int j = 0; j < render_cfg.max_count; ++j)
@@ -2296,8 +2296,6 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
     }
     else
     {
-        m_data.print();
-
         render_times.push_back(100.f); // dummy value for in transit only
         total_probing_time = 100.f;
     }
