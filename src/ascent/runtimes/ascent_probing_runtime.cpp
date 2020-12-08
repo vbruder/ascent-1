@@ -485,11 +485,15 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     assert(sim_estimate.size() == vis_estimates.size());
 
     std::valarray<float> t_inline(0.f, mpi_props.sim_node_count);
+    std::valarray<float> t_probing(0.f, mpi_props.sim_node_count);
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
+    {
         t_inline[i] = vis_estimates[i] * sim_factor * render_cfg.non_probing_count;
+        t_probing[i] = vis_estimates[i] * sim_factor * render_cfg.probing_count;
+    }
 
     // compositing time per image determined on stampede2 with 2/10 and 6/33 nodes
-    const float t_compose = 0.11f + 0.025f * mpi_props.vis_node_count;
+    const float t_compose = 0.05f + 0.05f * mpi_props.vis_node_count;
     const float t_compose_skipped = 0.01f * mpi_props.vis_node_count;
     // estimate with average compositing cost
     const float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose)
@@ -523,9 +527,9 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     {
         // push back load to sim nodes until
         // intransit time is smaller than max(inline + sim)
-        // NOTE: this loop is ineffective w/ higher node counts
+        // NOTE: this loop is inefficient w/ higher node counts
         int i = 0;
-        std::valarray<float> t_inline_sim = t_inline + t_sim;
+        std::valarray<float> t_inline_sim = t_inline + t_sim + t_probing;
         float t_inline_sim_max = t_inline_sim.max();
 
         while (t_inline_sim.max() < t_intransit.max())
@@ -572,7 +576,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
                 t_inline[min_id] = -1.f; //std::numeric_limits<float>::max() - t_sim[min_id];
 
             // recalculate inline + sim time
-            t_inline_sim = t_inline + t_sim;
+            t_inline_sim = t_inline + t_sim + t_probing;
             ++i;
             if (i > render_cfg.non_probing_count * mpi_props.sim_node_count)
                 ASCENT_ERROR("Error during load distribution.")
