@@ -480,7 +480,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
 {
     // optional render factors for sim and/or vis nodes (empirically determined)
     const float sim_factor = 1.0f;
-    const float vis_factor = 1.01f;
+    const float vis_factor = 1.0f;
 
     assert(sim_estimate.size() == vis_estimates.size());
 
