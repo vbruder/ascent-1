@@ -184,6 +184,7 @@ check_renders_surprises(const conduit::Node &renders_node)
   r_valid_paths.push_back("type");
   r_valid_paths.push_back("phi");
   r_valid_paths.push_back("theta");
+  r_valid_paths.push_back("radius");
   r_valid_paths.push_back("db_name");
   r_valid_paths.push_back("render_bg");
   r_valid_paths.push_back("annotations");
@@ -497,6 +498,7 @@ protected:
   vtkm::Bounds                         m_bounds;
   const int                            m_phi;
   const int                            m_theta;
+  const float                          m_radius;
   std::string                          m_image_name;
   std::string                          m_image_path;
   std::string                          m_db_path;
@@ -506,11 +508,13 @@ public:
   CinemaManager(vtkm::Bounds bounds,
                 const int phi,
                 const int theta,
+                const float radius, 
                 const std::string image_name,
                 const std::string path)
     : m_bounds(bounds),
       m_phi(phi),
       m_theta(theta),
+      m_radius(radius),
       m_image_name(image_name),
       m_time(0.f)
   {
@@ -522,7 +526,8 @@ public:
 
   CinemaManager()
     : m_phi(0),
-      m_theta(0)
+      m_theta(0),
+      m_radius(1.f)
   {
     ASCENT_ERROR("Cannot create un-initialized CinemaManger");
   }
@@ -777,7 +782,7 @@ private:
     totalExtent[1] = vtkm::Float32(bounds.Y.Length());
     totalExtent[2] = vtkm::Float32(bounds.Z.Length());
 
-    vtkm::Float32 radius = vtkm::Magnitude(totalExtent) * 2.5 / 2.0;
+    vtkm::Float32 radius = vtkm::Magnitude(totalExtent) * m_radius * 2.5 / 2.0;
 
     const double pi = 3.141592653589793;
     double phi_inc = 360.0 / double(m_phi);
@@ -854,6 +859,7 @@ public:
   static void create_db(vtkm::Bounds bounds,
                         const int phi,
                         const int theta,
+                        const float radius,
                         std::string db_name,
                         std::string path)
   {
@@ -862,7 +868,7 @@ public:
       ASCENT_ERROR("Creation failed: cinema database already exists");
     }
 
-    m_databases.emplace(std::make_pair(db_name, CinemaManager(bounds, phi, theta, db_name, path)));
+    m_databases.emplace(std::make_pair(db_name, CinemaManager(bounds, phi, theta, radius, db_name, path)));
   }
 
   static CinemaManager& get_db(std::string db_name)
@@ -993,10 +999,13 @@ DefaultRender::execute()
         {
           int phi = 5;
           int theta = 5;
+          float radius = 1.0;
           if (render_node.has_path("phi"))
             phi = render_node["phi"].to_int32();
           if (render_node.has_path("theta"))
             theta = render_node["theta"].to_int32();
+          if (render_node.has_path("radius"))
+            radius = render_node["radius"].to_float32();
 
           const int full_render_count = phi*theta;
           int current_render_count = full_render_count;
@@ -1099,7 +1108,7 @@ DefaultRender::execute()
           bool exists = detail::CinemaDatabases::db_exists(db_name);
           if(!exists)
           {
-            detail::CinemaDatabases::create_db(*bounds,phi,theta, db_name, output_path);
+            detail::CinemaDatabases::create_db(*bounds, phi, theta, radius, db_name, output_path);
           }
           detail::CinemaManager &manager = detail::CinemaDatabases::get_db(db_name);
 

@@ -418,7 +418,7 @@ struct RenderConfig
         int total = non_probing_renders;
         for (const int &id : probing_ids)
         {
-            if (id >= render_offset && id <= total) // include trailing probings TODO: test
+            if (id >= render_offset && id <= total) // include trailing probings
                 ++total;
         }
         return total;
@@ -1304,7 +1304,7 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
             float *db = (*render_ptrs[j][i])["depth_buffers"].child(render_order[j][i]).as_float_ptr();
             // std::cout << mpi_props.rank << " | ..add image " << j << " " << render_order.at(j).at(i) << " | id " << id << std::endl;
 
-            // TODO: test & debug ActivePixelDecoding
+            // test & debug ActivePixelDecoding
             if (false)
             {
                 std::vector<unsigned char> dec_colors;
@@ -1467,15 +1467,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
     std::cout << mpi_props.rank << " : sim time estimate " << my_sim_estimate << std::endl;
 
     Node data_packed;
-    pack_node(data, data_packed);
-    int my_data_size = data_packed.total_bytes_compact();
+    int my_data_size = 0;
 
     if (mpi_props.rank >= mpi_props.sim_node_count) // nodes with the highest ranks are vis nodes
     {
         is_vis_node = true;
         my_vis_rank = mpi_props.rank - mpi_props.sim_node_count;
         my_sim_estimate = 0.f;
-        my_data_size = 0;
     }
     else if (mpi_props.size > 1) // otherwise this is a sim node
     {
@@ -1527,6 +1525,12 @@ void hybrid_render(const MPI_Properties &mpi_props,
             skipped_render = 1;
             if (render_chunks_probing.has_child("render_file_names")) //images"))
                 skipped_render = 0; // false
+        }
+
+        if (!skipped_render)
+        {
+            pack_node(data, data_packed);
+            my_data_size = data_packed.total_bytes_compact();
         }
     }
     log_global_time("end packData", mpi_props.rank);
@@ -1609,7 +1613,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
         std::vector<int> sending_node_ranks;
         for (int i = 0; i < mpi_props.sim_node_count; ++i)
         {
-            if (node_map[i] == my_vis_rank)
+            if (node_map[i] == my_vis_rank && !g_skipped[i])
                 sending_node_ranks.push_back(i);
         }
         const int my_data_recv_cnt = int(sending_node_ranks.size());
@@ -1671,14 +1675,9 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
         for (int i = 0; i < sim_batch_sizes.size(); ++i)
         {
-            // int render_count = g_render_counts[src_ranks[i]]
-            //                     + int(g_render_counts[src_ranks[i]]*render_cfg.probing_factor);
-            // batches[i] = get_batch(render_count, render_cfg.batch_count);
-
             sim_batch_sizes[i] = get_batch_sizes(g_render_counts[src_ranks[i]], render_cfg, false);            
         }
         
-
         // probing chunks
         vec_node_uptr render_chunks_probe(my_render_recv_cnt);
         std::vector<MPI_Request> requests_probing(my_render_recv_cnt, MPI_REQUEST_NULL);
@@ -1949,34 +1948,17 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 // std::cout << mpi_props.rank << " -- buffer size: " << total_size << std::endl;
             }
 
-            // MPI_Request request_data = MPI_REQUEST_NULL;
-            // TODO: send data only if not skipped_render
-            // {   // send data to vis node
-            //     auto t_start = std::chrono::system_clock::now();
-            //     int mpi_error = MPI_Isend(const_cast<void*>(data_packed.data_ptr()),
-            //                               data_packed.total_bytes_compact(),
-            //                               MPI_BYTE,
-            //                               destination,
-            //                               TAG_DATA,
-            //                               mpi_props.comm_world,
-            //                               &request_data
-            //                               );
-            //     if (mpi_error)
-            //         std::cout << "ERROR sending sim data to " << destination << std::endl;
-            //     log_time(t_start, "- send data ", mpi_props.rank);
-            // }
-
-            std::thread send_data_thread = std::thread(&MPI_Ssend, const_cast<void*>(data_packed.data_ptr()),
-                                                        data_packed.total_bytes_compact(),
-                                                        MPI_BYTE, destination, TAG_DATA, 
-                                                        mpi_props.comm_world);
-
-            // debug_break();
             MPI_Request request_probing = MPI_REQUEST_NULL;
-            // pack and send probing renders in separate thread
+            std::thread send_data_thread;
             std::thread pack_probing_thread;
+            // pack and send data and probing renders in separate thread
             if (!skipped_render)
             {
+                send_data_thread = std::thread(&MPI_Ssend, 
+                                                const_cast<void*>(data_packed.data_ptr()),
+                                                data_packed.total_bytes_compact(),
+                                                MPI_BYTE, destination, TAG_DATA, 
+                                                mpi_props.comm_world);
                 pack_probing_thread = std::thread(&pack_and_send, std::ref(render_chunks_probing),
                                                   destination, TAG_PROBING, mpi_props.comm_world,
                                                   std::ref(request_probing), mpi_props.rank);
@@ -1997,14 +1979,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
             auto t_start = std::chrono::system_clock::now();
             for (int i = 0; i < batch_sizes.size(); ++i)
             {
-                // int begin = std::accumulate(batch_sizes.begin(), batch_sizes.begin() + i, 0);
                 int begin = 0;
                 for (int j = 0; j < i; j++)
                     begin += batch_sizes[j];
 
-                // const int current_batch_size = get_current_batch_size(batch, i);
-                // if (current_batch_size <= 1)
-                //     break;
                 const int render_count = batch_sizes[i];
                 if (render_count == 0)
                     break;
@@ -2026,11 +2004,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 sum_render += t_end - t_render;
 
                 t_render = std::chrono::system_clock::now();
-                // if (threads.size() > 0)
-                // {
-                //     threads.back().join();
-                //     threads.pop_back();
-                // }
 
                 // send render chunks
                 ascent_renders[i].info(info[i]);
@@ -2069,22 +2042,23 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
             {   // wait for all sent data to be received
                 t_start = std::chrono::system_clock::now();
-                // MPI_Wait(&request_data, MPI_STATUS_IGNORE);
-                // probing
+                // data
+                if (send_data_thread.joinable())
+                    send_data_thread.join();
+                log_time(t_start, "+ wait send data ", mpi_props.rank);
+
                 if (!skipped_render)
                 {
+                    // probing
                     if (pack_probing_thread.joinable())
                         pack_probing_thread.join();
                     MPI_Wait(&request_probing, MPI_STATUS_IGNORE);
+                    // inline render chunks
+                    int mpi_error = MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
+                    if (mpi_error)
+                        std::cout << "ERROR: waitall (sim nodes sending renders) " << mpi_props.rank << std::endl;
+                    log_time(t_start, "+ wait send img ", mpi_props.rank);
                 }
-                if (send_data_thread.joinable())
-                    send_data_thread.join();
-
-                // render chunks
-                int mpi_error = MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
-                if (mpi_error)
-                    std::cout << "ERROR: waitall (sim nodes sending renders) " << mpi_props.rank << std::endl;
-                log_time(t_start, "+ wait send img ", mpi_props.rank);
             }
             log_global_time("end sendRenders", mpi_props.rank);
 
