@@ -777,7 +777,9 @@ private:
     totalExtent[1] = vtkm::Float32(bounds.Y.Length());
     totalExtent[2] = vtkm::Float32(bounds.Z.Length());
 
-    vtkm::Float32 radius = vtkm::Magnitude(totalExtent) * 2.5 / 2.0;
+    // TODO: add factor based on global bounds (10 => factor 1, 30 => factor 3...)
+    double scaling_factor = 3.0;
+    vtkm::Float32 radius = vtkm::Magnitude(totalExtent) * scaling_factor * 2.5 / 2.0;
 
     const double pi = 3.141592653589793;
     double phi_inc = 360.0 / double(m_phi);
