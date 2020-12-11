@@ -486,13 +486,22 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
 
     std::valarray<float> t_inline(0.f, mpi_props.sim_node_count);
     std::valarray<float> t_probing(0.f, mpi_props.sim_node_count);
+    float mean_vis = 0.f;
+    for (size_t i = 0; i < mpi_props.sim_node_count; i++)
+        mean_vis += vis_estimates[i];
+    mean_vis /= mpi_props.sim_node_count*(1.f-skipped_renders);
+
+    float render_t = 0.f;
+    float damping_factor = 0.2f;    // [0,1]
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
     {
-        t_inline[i] = vis_estimates[i] * sim_factor * render_cfg.non_probing_count;
-        t_probing[i] = vis_estimates[i] * sim_factor * render_cfg.probing_count;
+        if (vis_estimates[i] > 0.00001f)
+            render_t = mean_vis * damping_factor + vis_estimates[i] * (1.f - damping_factor);
+        t_inline[i]  = render_t * sim_factor * render_cfg.non_probing_count;
+        t_probing[i] = render_t * sim_factor * render_cfg.probing_count;
     }
 
-    // compositing time per image determined on stampede2 with 2/10 and 6/33 nodes
+    // compositing time per image determined on stampede2 with 1/4, 2/10 and 6/33 nodes
     const float t_compose = 0.05f + 0.05f * mpi_props.vis_node_count;
     const float t_compose_skipped = 0.01f * mpi_props.vis_node_count;
     // estimate with average compositing cost
@@ -502,8 +511,23 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         std::cout << "=== compositing estimate: " << t_compositing << std::endl;
     // data send overhead
     const float t_send = 1.0f * std::ceil((1.f-skipped_renders) * mpi_props.sim_node_count / mpi_props.vis_node_count);
-
+    
+    // copy render overhead -> roughly follows 0.5*x^2 - 4.5*x + 13 (quadratic in range [0,4])
+    // with x being the number of sending sim nodes
+    std::valarray<float> t_copy_vis(0.f, mpi_props.vis_node_count);
+    for (const auto &a : node_map)
+    {
+        if (a >= 0 && t_copy_vis[a] < 3.5f) 
+            t_copy_vis[a] += 1.f;
+    }
+    for (size_t i = 0; i < t_copy_vis.size(); i++)
+    {
+        if (t_copy_vis[i] > 0.f)
+            t_copy_vis[i] = 0.5f * pow(t_copy_vis[i], 2.f) - 4.5f*t_copy_vis[i] + 13.f;
+    }
+    
     std::valarray<float> t_intransit(t_compositing + t_send, mpi_props.vis_node_count);
+    t_intransit += t_copy_vis;
     std::valarray<float> t_sim(sim_estimate.data(), mpi_props.sim_node_count);
 
     std::vector<int> render_counts_sim(mpi_props.sim_node_count, 0);
@@ -513,6 +537,8 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
     {
         const int target_vis_node = node_map[i];
+        if (target_vis_node < 0)
+            continue;
 
         t_intransit[target_vis_node] += t_inline[i] * (vis_factor/sim_factor);
         if (t_inline[i] <= 0.f + std::numeric_limits<float>::min())
@@ -520,7 +546,6 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         else
             t_inline[i] = vis_overheads[i];
         render_counts_vis[target_vis_node] += render_cfg.non_probing_count;
-
     }
 
     if (render_cfg.insitu_type != "intransit")
@@ -547,17 +572,18 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
                     min_val = t_inline_sim[j];
                 }
             }
+
             if (min_id == -1)   // no rendering at all
                 break;
 
             // find the corresponding vis node
             const int target_vis_node = node_map[min_id];
+            if (target_vis_node == -1)
+                continue;
 
             if (render_counts_vis[target_vis_node] > 0)
             {
                 t_intransit[target_vis_node] -= vis_estimates[min_id] * vis_factor;
-                // Add render receive cost to vis node.
-                // t_intransit[target_vis_node] += 0.09f;
                 render_counts_vis[target_vis_node]--;
 
                 t_inline[min_id] += vis_estimates[min_id] * sim_factor;
@@ -627,7 +653,8 @@ std::vector<int> sort_ranks(const std::vector<float> &sim_estimates,
  */
 std::vector<int> node_assignment(const std::vector<float> &g_sim_estimates,
                                  const std::vector<float> &g_vis_estimates,
-                                 const int vis_node_count, const int render_count)
+                                 const int vis_node_count, const int render_count,
+                                 const std::vector<int> &g_skipped)
 {
     const std::vector<int> rank_order = sort_ranks(g_sim_estimates, g_vis_estimates, render_count);
     const int sim_node_count = rank_order.size() - vis_node_count;
@@ -640,7 +667,8 @@ std::vector<int> node_assignment(const std::vector<float> &g_sim_estimates,
         const int target_vis_node = std::min_element(vis_node_cost.begin(), vis_node_cost.end())
                                     - vis_node_cost.begin();
         // asssign the sim to to the vis node
-        map[rank_order[i]] = target_vis_node;
+        if (!g_skipped[rank_order[i]])
+            map[rank_order[i]] = target_vis_node;
         // adapt the cost on the vis node
         vis_node_cost[target_vis_node] += g_vis_estimates[rank_order[i]];
     }
@@ -1564,11 +1592,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
     // assign sim nodes to vis nodes
     std::vector<int> node_map = node_assignment(g_sim_estimates, g_vis_estimates,
                                                 mpi_props.vis_node_count,
-                                                render_cfg.non_probing_count);
+                                                render_cfg.non_probing_count, g_skipped);
 
     // DEBUG: OUT
-    if (mpi_props.rank == 0)
-    {
+    if (mpi_props.rank == 0)    {
         std::cout << "=== skipped_renders (relative) " << skipped_renders << std::endl;
 
         std::cout << "=== node_map ";
@@ -1621,7 +1648,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
         const int my_render_recv_cnt = render_cfg.insitu_type == "intransit" ? 0 : my_data_recv_cnt;
         std::map<int, int> recv_counts;
         for (const auto &n : node_map)
-            ++recv_counts[n];
+        {
+            if (n >= 0)
+                ++recv_counts[n];
+        }
 
         std::vector<int> depth_id_order;
         for (int i = 0; i < mpi_props.vis_node_count; i++)
@@ -1814,16 +1844,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
                     threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
                                                    std::ref(render_chunks_vis[i])));
-                    // conduit::Node info;
-                    // // ascent_main_runtime : out.set_external(m_info);
-                    // ascent_renders[i].info(info);
-
-                    // if (info.has_child("render_file_names"))
-                    // {
-                    //     render_chunks_vis[i] = std::make_shared<Node>(info);
-                    //     // ascent_renders[i].info(*render_chunks_vis[i]);
-                    //     // render_chunks_vis.push_back(std::make_shared<Node>(info));
-                    // }
                 }
                 else
                 {
