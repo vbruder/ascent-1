@@ -486,10 +486,19 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
 
     std::valarray<float> t_inline(0.f, mpi_props.sim_node_count);
     std::valarray<float> t_probing(0.f, mpi_props.sim_node_count);
+    float mean_vis = 0.f;
+    for (size_t i = 0; i < mpi_props.sim_node_count; i++)
+        mean_vis += vis_estimates[i];
+    mean_vis /= mpi_props.sim_node_count*(1.f-skipped_renders);
+
+    float render_t = 0.f;
+    float damping_factor = 0.2f;    // [0,1]
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
     {
-        t_inline[i] = vis_estimates[i] * sim_factor * render_cfg.non_probing_count;
-        t_probing[i] = vis_estimates[i] * sim_factor * render_cfg.probing_count;
+        if (vis_estimates[i] > 0.00001f)
+            render_t = mean_vis * damping_factor + vis_estimates[i] * (1.f - damping_factor);
+        t_inline[i]  = render_t * sim_factor * render_cfg.non_probing_count;
+        t_probing[i] = render_t * sim_factor * render_cfg.probing_count;
     }
 
     // compositing time per image determined on stampede2 with 1/4, 2/10 and 6/33 nodes
