@@ -492,7 +492,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     mean_vis /= mpi_props.sim_node_count*(1.f-skipped_renders);
 
     float render_t = 0.f;
-    float damping_factor = 0.2f;    // [0,1]
+    float damping_factor = 0.0f;    // [0,1]
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
     {
         if (vis_estimates[i] > 0.00001f)
