@@ -478,9 +478,10 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
                                  const MPI_Properties mpi_props,
                                  const float skipped_renders)
 {
-    // optional render factors for sim and/or vis nodes (empirically determined)
+    // render factors for sim and/or vis nodes (to be used if performance differs)
     const float sim_factor = 1.0f;
     const float vis_factor = 1.0f;
+    const float damping_factor = 0.0f;    // [0,1]
 
     assert(sim_estimate.size() == vis_estimates.size());
 
@@ -492,7 +493,6 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     mean_vis /= mpi_props.sim_node_count*(1.f-skipped_renders);
 
     float render_t = 0.f;
-    float damping_factor = 0.2f;    // [0,1]
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
     {
         if (vis_estimates[i] > 0.00001f)
@@ -507,10 +507,10 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     // estimate with average compositing cost
     const float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose)
                                  * render_cfg.max_count;
-     if (mpi_props.rank == 0)
+    if (mpi_props.rank == 0)
         std::cout << "=== compositing estimate: " << t_compositing << std::endl;
-    // data send overhead
-    const float t_send = 1.0f * std::ceil((1.f-skipped_renders) * mpi_props.sim_node_count / mpi_props.vis_node_count);
+    // data receive overhead
+    const float t_receive = 1.0f * std::ceil((1.f-skipped_renders) * mpi_props.sim_node_count / mpi_props.vis_node_count);
     
     // copy render overhead -> roughly follows 0.5*x^2 - 4.5*x + 13 (quadratic in range [0,4])
     // with x being the number of sending sim nodes
@@ -526,10 +526,15 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
             t_copy_vis[i] = 0.5f * pow(t_copy_vis[i], 2.f) - 4.5f*t_copy_vis[i] + 13.f;
     }
     
-    std::valarray<float> t_intransit(t_compositing + t_send, mpi_props.vis_node_count);
-    t_intransit += t_copy_vis;
-    std::valarray<float> t_sim(sim_estimate.data(), mpi_props.sim_node_count);
+    // initialize with constant costs for active vis nodes
+    std::valarray<float> t_intransit(0.f, mpi_props.vis_node_count);
+    for (const auto a : node_map)
+    {
+        if (a >= 0)
+            t_intransit[a] = t_compositing + t_receive + t_copy_vis[a];
+    }
 
+    std::valarray<float> t_sim(sim_estimate.data(), mpi_props.sim_node_count);
     std::vector<int> render_counts_sim(mpi_props.sim_node_count, 0);
     std::vector<int> render_counts_vis(mpi_props.vis_node_count, 0);
 
@@ -572,14 +577,15 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
                     min_val = t_inline_sim[j];
                 }
             }
-
-            if (min_id == -1)   // no rendering at all
+            if (min_id == -1)   // no rendering happening at all
                 break;
 
             // find the corresponding vis node
             const int target_vis_node = node_map[min_id];
-            if (target_vis_node == -1)
-                continue;
+            // if target node is an empty node, vis compositing + overhead 
+            // are greater than inline rendering
+            if (target_vis_node == -1)  
+                break;  
 
             if (render_counts_vis[target_vis_node] > 0)
             {
@@ -599,13 +605,13 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
             // if sim node got all its images back for inline rendering
             // -> take it out of consideration
             if (render_counts_sim[min_id] == render_cfg.non_probing_count)
-                t_inline[min_id] = -1.f; //std::numeric_limits<float>::max() - t_sim[min_id];
+                t_inline[min_id] = -1.f; 
 
             // recalculate inline + sim time
             t_inline_sim = t_inline + t_sim + t_probing;
             ++i;
             if (i > render_cfg.non_probing_count * mpi_props.sim_node_count)
-                ASCENT_ERROR("Error during load distribution.")
+                ASCENT_ERROR("Error during load distribution.");
         }
     }
 
