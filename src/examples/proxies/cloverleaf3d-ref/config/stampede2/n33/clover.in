@@ -20,6 +20,6 @@
  test_problem 1
  
  visit_frequency=100
- visit_sim_time=80.0
+ visit_sim_time=100.0
  1
 *endclover
