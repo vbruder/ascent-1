@@ -505,8 +505,10 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     const float t_compose = 0.05f + 0.05f * mpi_props.vis_node_count;
     const float t_compose_skipped = 0.01f * mpi_props.vis_node_count;
     // estimate with average compositing cost
-    const float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose)
-                                 * render_cfg.max_count;
+    float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose);
+    t_compositing *= render_cfg.max_count;
+    t_compositing = std::min(t_compositing, 95.f);  // 95 is the max observed for 16 vis ranks on 10 nodes
+
     if (mpi_props.rank == 0)
         std::cout << "=== compositing estimate: " << t_compositing << std::endl;
     // data receive overhead
@@ -1635,6 +1637,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
     ascent_opts["sampling_method"] = render_cfg.sampling_method;
     ascent_opts["insitu_type"] = render_cfg.insitu_type;
     ascent_opts["field_filter"] = "true";
+    ascent_opts["ghost_field_name"] = "ascent_ghosts";
 
     log_time(start1, "- load distribution ", mpi_props.rank);
     log_global_time("end loadAssignment", mpi_props.rank);
@@ -2257,6 +2260,7 @@ void ProbingRuntime::Execute(const conduit::Node &actions)
         ascent_opt["sampling_method"] = sampling_method;
         ascent_opt["sleep"] = world_rank == 0 ? SLEEP : 0;
         ascent_opt["field_filter"] = "true";
+        ascent_opt["ghost_field_name"] = "ascent_ghosts";
 
         // all sim nodes run probing in a new ascent instance
         ascent_probing.open(ascent_opt);
