@@ -9,6 +9,12 @@
           association: "vertex"
 -
   action: "add_scenes"
+  probing:
+    factor: 0.2
+    batch_count: 3
+    node_split: 0.75
+    insitu_type: "hybrid"
+    sampling_method: "random"
   scenes:
     s1:
       plots:
@@ -17,9 +23,9 @@
           field: "energy"
           pipeline: "pl1"
           min_value: 0.1
-          max_value: 100.0
+          max_value: 200.0
           color_table: 
-            name: "rainbow desaturated"
+            name: "viridis"
             control_points: 
               - 
                 type: "alpha"
@@ -27,12 +33,12 @@
                 alpha: 0.0
               - 
                 type: "alpha"
-                position: 0.6
+                position: 0.1
                 alpha: 0.5
               - 
                 type: "alpha"
-                position: 0.9
-                alpha: 0.9
+                position: 0.6
+                alpha: 0.7
               - 
                 type: "alpha"
                 position: 1.0

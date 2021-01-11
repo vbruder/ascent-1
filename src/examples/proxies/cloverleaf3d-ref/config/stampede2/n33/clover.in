@@ -1,7 +1,7 @@
 *clover
  state 1 density=0.1 energy=0.0
- state 2 density=40.0 energy=120.0 geometry=cuboid xmin=0.1 xmax=0.84 ymin=0.05 ymax=0.89 zmin=0.04 zmax=0.9 xvel=19.0 yvel=19.15 zvel=19.2
- state 3 density=30.7 energy=120.0 geometry=cuboid  xmin=9.1 xmax=9.9 ymin=9.07 ymax=9.89 zmin=9.12 zmax=9.89 xvel=-13.1 yvel=-13.3 zvel=-13.2
+ state 2 density=40.0 energy=150.0 geometry=cuboid xmin=0.1 xmax=0.84 ymin=0.05 ymax=0.89 zmin=0.04 zmax=0.9 xvel=19.0 yvel=19.15 zvel=19.2
+ state 3 density=30.7 energy=150.0 geometry=cuboid xmin=9.1 xmax=9.9 ymin=9.07 ymax=9.89 zmin=9.12 zmax=9.89 xvel=-13.1 yvel=-13.3 zvel=-13.2
  x_cells=960
  y_cells=960
  z_cells=960
@@ -14,12 +14,11 @@
  initial_timestep=0.1
  timestep_rise=1.1
  max_timestep=1.0
- 
  end_step=9000
  end_time=9000.1
  test_problem 1
  
  visit_frequency=100
- visit_sim_time=100.0
+ visit_sim_time=120.0
  1
 *endclover

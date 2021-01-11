@@ -481,7 +481,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     // render factors for sim and/or vis nodes (to be used if performance differs)
     const float sim_factor = 1.0f;
     const float vis_factor = 1.0f;
-    const float damping_factor = 0.0f;    // [0,1]
+    const float damping_factor = 0.2f;    // [0,1]
 
     assert(sim_estimate.size() == vis_estimates.size());
 
@@ -507,7 +507,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     // estimate with average compositing cost
     float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose);
     t_compositing *= render_cfg.max_count;
-    t_compositing = std::min(t_compositing, 95.f);  // 95 is the max observed for 16 vis ranks on 10 nodes
+    t_compositing = std::min(t_compositing, 110.f);  // 95 is the max observed for 16 vis ranks on 10 nodes
 
     if (mpi_props.rank == 0)
         std::cout << "=== compositing estimate: " << t_compositing << std::endl;
