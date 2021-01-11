@@ -10,7 +10,7 @@
 -
   action: "add_scenes"
   probing:
-    factor: 0.1
+    factor: 0.2
     batch_count: 3
     node_split: 0.8
     insitu_type: "hybrid"

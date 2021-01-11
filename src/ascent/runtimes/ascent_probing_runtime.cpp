@@ -480,8 +480,8 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
 {
     // render factors for sim and/or vis nodes (to be used if performance differs)
     const float sim_factor = 1.0f;
-    const float vis_factor = 1.0f;
-    const float damping_factor = 0.0f;    // [0,1]
+    const float vis_factor = 1.02f;       // buffer of 2% to avoid overloading vis resources
+    const float damping_factor = 0.2f;    // [0,1]
 
     assert(sim_estimate.size() == vis_estimates.size());
 
@@ -492,10 +492,10 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         mean_vis += vis_estimates[i];
     mean_vis /= mpi_props.sim_node_count*(1.f-skipped_renders);
 
-    float render_t = 0.f;
     for (size_t i = 0; i < mpi_props.sim_node_count; i++)
     {
-        if (vis_estimates[i] > 0.00001f)
+        float render_t = 0.f;
+        if (vis_estimates[i] > std::numeric_limits<float>::min())   // only active nodes
             render_t = mean_vis * damping_factor + vis_estimates[i] * (1.f - damping_factor);
         t_inline[i]  = render_t * sim_factor * render_cfg.non_probing_count;
         t_probing[i] = render_t * sim_factor * render_cfg.probing_count;
@@ -507,7 +507,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     // estimate with average compositing cost
     float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose);
     t_compositing *= render_cfg.max_count;
-    t_compositing = std::min(t_compositing, 95.f);  // 95 is the max observed for 16 vis ranks on 10 nodes
+    t_compositing = std::min(t_compositing, 110.f);  // 110sec is the max observed for 16 vis ranks on 10 nodes
 
     if (mpi_props.rank == 0)
         std::cout << "=== compositing estimate: " << t_compositing << std::endl;
@@ -532,7 +532,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     std::valarray<float> t_intransit(0.f, mpi_props.vis_node_count);
     for (const auto a : node_map)
     {
-        if (a >= 0)
+        if (a >= 0) // -1 indicates inactive
             t_intransit[a] = t_compositing + t_receive + t_copy_vis[a];
     }
 
@@ -546,8 +546,10 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         const int target_vis_node = node_map[i];
         if (target_vis_node < 0)
             continue;
-
+        
         t_intransit[target_vis_node] += t_inline[i] * (vis_factor/sim_factor);
+
+        // reset vis cost on sim nodes 
         if (t_inline[i] <= 0.f + std::numeric_limits<float>::min())
             t_inline[i] = 0;
         else
@@ -573,7 +575,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
             for (int j = 0; j < t_inline_sim.size(); j++)
             {
                 // don't process skipped nodes on sim nodes
-                if (t_inline[j] > 0 && t_inline_sim[j] < min_val)
+                if (t_inline[j] > std::numeric_limits<float>::min() && t_inline_sim[j] < min_val)
                 {
                     min_id = j;
                     min_val = t_inline_sim[j];
