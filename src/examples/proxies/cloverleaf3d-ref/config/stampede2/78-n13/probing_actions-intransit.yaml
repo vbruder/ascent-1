@@ -10,10 +10,10 @@
 -
   action: "add_scenes"
   probing:
-    factor: 0.2
+    factor: 0.0
     batch_count: 3
-    node_split: 0.8
-    insitu_type: "hybrid"
+    node_split: 0.78125
+    insitu_type: "intransit"
     sampling_method: "random"
   scenes:
     s1:

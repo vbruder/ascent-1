@@ -14,6 +14,7 @@
     node_split: 0.794
     batch_count: 3
     insitu_type: "hybrid"
+    sampling_method: "random"
   scenes:
     s1:
       plots:
