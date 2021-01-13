@@ -1,0 +1,53 @@
+-
+  action: "add_pipelines"
+  pipelines: 
+    pl1:
+      f1:
+        type: "recenter"
+        params:
+          field: "energy"
+          association: "vertex"
+-
+  action: "add_scenes"
+  probing:
+    factor: 1.0
+    batch_count: 2
+    node_split: 0.8205
+    insitu_type: "inline"
+    sampling_method: "random"
+  scenes:
+    s1:
+      plots:
+        p1:
+          type: "volume"
+          field: "energy"
+          pipeline: "pl1"
+          min_value: 0.1
+          max_value: 200.0
+          color_table: 
+            name: "viridis"
+            control_points: 
+              - 
+                type: "alpha"
+                position: 0.0
+                alpha: 0.0
+              - 
+                type: "alpha"
+                position: 0.1
+                alpha: 0.5
+              - 
+                type: "alpha"
+                position: 0.6
+                alpha: 0.7
+              - 
+                type: "alpha"
+                position: 1.0
+                alpha: 1.0
+      renders:
+        r1:
+          type: "cinema"
+          phi: 20
+          theta: 20
+          camera:
+            zoom: 0.3
+          db_name: "clover_db"
