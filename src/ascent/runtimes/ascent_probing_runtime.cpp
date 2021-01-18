@@ -482,7 +482,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
     const float sim_factor = 1.0f;
     const float vis_factor = 1.0f;
     const float damping_factor = 0.0f;    // [0,1]
-    const int tasks_per_node = 6;       // FIXME: MPI tasks per node, this should not be hardcoded
+    const float tasks_per_node = 6;      // FIXME: MPI tasks per node, this should not be hardcoded
     const int active_sim_node_cnt = std::ceil(mpi_props.sim_node_count*(1.f-skipped_renders) / tasks_per_node);
 
     assert(sim_estimate.size() == vis_estimates.size());
@@ -503,8 +503,8 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         t_probing[i] = render_t * sim_factor * render_cfg.probing_count;
     }
 
-    // compositing time per image determined on stampede2 with 2/10, 6/33 and 16/80 nodes
-    const float t_compose = 0.06f + 0.06f * std::ceil(mpi_props.vis_node_count / tasks_per_node);
+    // compositing time per image empirically determined on Stampede2
+    const float t_compose = 0.09f + 0.05f * std::ceil(mpi_props.vis_node_count / tasks_per_node);
     const float t_compose_skipped = 0.014f * std::ceil(mpi_props.vis_node_count / tasks_per_node);
     // estimate with average compositing cost
     float t_compositing = (skipped_renders*t_compose_skipped + (1.f-skipped_renders)*t_compose);
