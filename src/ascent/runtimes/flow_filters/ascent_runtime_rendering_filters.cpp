@@ -1222,11 +1222,11 @@ VTKHBounds::execute()
 
     // TODO: calculate bounds w/o global sync
     bounds->X.Min =  0.0;
-    bounds->X.Max = 10.0;
+    bounds->X.Max = 28.49003;
     bounds->Y.Min =  0.0;
-    bounds->Y.Max = 10.0;
+    bounds->Y.Max = 28.49003;
     bounds->Z.Min =  0.0;
-    bounds->Z.Max = 10.0;
+    bounds->Z.Max = 28.49003;
 
     set_output<vtkm::Bounds>(bounds);
 }
