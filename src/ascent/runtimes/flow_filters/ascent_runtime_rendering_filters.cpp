@@ -96,6 +96,8 @@
 
 #include <stdio.h>
 #include <thread>
+#include <algorithm>
+#include <random>
 
 using namespace conduit;
 using namespace std;
@@ -840,6 +842,18 @@ private:
 
       } // theta
     } // phi
+
+    // shuffle cameras (deterministic seed) to avoid a bias in prediction
+    auto rng = std::default_random_engine {42};
+    std::shuffle(m_cameras.begin(), m_cameras.end(), rng);
+
+    // debug out
+    // std::vector<int> shuffled_ids(m_cameras.size());
+    // std::iota(shuffled_ids.begin(), shuffled_ids.end(), 0);
+    // std::shuffle(shuffled_ids.begin(), shuffled_ids.end(), rng);
+    // std::cout << "shuffled camera ids: ";
+    // for (auto a : shuffled_ids) std::cout << a << ' ';
+    // std::cout << std::endl;
   }
 
 }; // CinemaManager
