@@ -502,6 +502,9 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         t_inline[i]  = render_t * sim_factor * render_cfg.non_probing_count;
         t_probing[i] = render_t * sim_factor * render_cfg.probing_count;
     }
+    // all sim nodes are bound by the maximum probing time because of the sync after probing
+    float max_probing = t_probing.max();
+    float mean_vis_overhead = accumulate(vis_overheads.begin(), vis_overheads.end(), 0.f) / vis_overheads.size(); 
 
     // compositing time per image empirically determined on Stampede2
     const float t_compose = 0.09f + 0.05f * std::ceil(mpi_props.vis_node_count / tasks_per_node);
@@ -555,7 +558,8 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         if (t_inline[i] <= 0.f + std::numeric_limits<float>::min())
             t_inline[i] = 0;
         else
-            t_inline[i] = vis_overheads[i];
+            // we need something here, otherwise it is identified as skipped
+            t_inline[i] = mean_vis_overhead; 
         render_counts_vis[target_vis_node] += render_cfg.non_probing_count;
     }
 
@@ -565,7 +569,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
         // intransit time is smaller than max(inline + sim)
         // NOTE: this loop is inefficient w/ higher node counts
         int i = 0;
-        std::valarray<float> t_inline_sim = t_inline + t_sim + t_probing;
+        std::valarray<float> t_inline_sim = t_inline + t_sim + max_probing;
         float t_inline_sim_max = t_inline_sim.max();
 
         while (t_inline_sim.max() < t_intransit.max())
@@ -576,7 +580,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
             // std::min_element(begin(t_inline_sim), end(t_inline_sim)) - begin(t_inline_sim);
             for (int j = 0; j < t_inline_sim.size(); j++)
             {
-                // don't process skipped nodes on sim nodes
+                // don't process skipped nodes on sim nodes - FIXME: bad practice to use 0 as indicator
                 if (t_inline[j] > std::numeric_limits<float>::min() && t_inline_sim[j] < min_val)
                 {
                     min_id = j;
@@ -614,7 +618,7 @@ std::vector<int> load_assignment(const std::vector<float> &sim_estimate,
                 t_inline[min_id] = -1.f; 
 
             // recalculate inline + sim time
-            t_inline_sim = t_inline + t_sim + t_probing;
+            t_inline_sim = t_inline + t_sim + max_probing;
             ++i;
             if (i > render_cfg.non_probing_count * mpi_props.sim_node_count)
                 ASCENT_ERROR("Error during load distribution.");
@@ -1524,12 +1528,13 @@ void hybrid_render(const MPI_Properties &mpi_props,
         if (my_probing_times.size() > 0)
         {
             my_avg_probing_time = float(sum_render_times / my_probing_times.size());
-            // try median
-            std::vector<double> my_probing_times_copy;
-            std::copy(my_probing_times.begin(), my_probing_times.end(),
-                      std::back_inserter(my_probing_times_copy));
-            std::sort(my_probing_times_copy.begin(), my_probing_times_copy.end());
-            my_avg_probing_time = my_probing_times_copy[my_probing_times_copy.size()/2];
+
+            // uncomment to use median instead of mean
+            // std::vector<double> my_probing_times_copy;
+            // std::copy(my_probing_times.begin(), my_probing_times.end(),
+            //           std::back_inserter(my_probing_times_copy));
+            // std::sort(my_probing_times_copy.begin(), my_probing_times_copy.end());
+            // my_avg_probing_time = my_probing_times_copy[my_probing_times_copy.size()/2];
 
             my_avg_probing_time /= 1000.f; // convert to seconds
         }
@@ -1649,6 +1654,9 @@ void hybrid_render(const MPI_Properties &mpi_props,
     // ================ VIS nodes ================
     if (is_vis_node)
     {
+        // DEBUG ONLY: sleep instead of rendering -> uncomment
+        // return;
+
         // find all sim nodes sending data to this vis node
         std::vector<int> sending_node_ranks;
         for (int i = 0; i < mpi_props.sim_node_count; ++i)
@@ -1955,6 +1963,17 @@ void hybrid_render(const MPI_Properties &mpi_props,
     // ================ SIM nodes ================
     else
     {
+        // DEBUG ONLY: sleep instead of rendering -> set true
+        if (false)
+        {
+            // my_render_overhead +
+            double time = my_avg_probing_time * g_render_counts[mpi_props.rank];
+            std::cout << mpi_props.rank << "  ~SIM: SLEEPS FOR " << time << std::endl;
+            std::this_thread::sleep_for(std::chrono::duration<double>(time));
+            log_global_time("end render", mpi_props.rank);
+            return;
+        }
+
         const int destination = node_map[mpi_props.rank] + mpi_props.sim_node_count;
         // std::cout << mpi_props.rank << "  ~SIM: sends extract to "
         //           <<  node_map[mpi_props.rank] + mpi_props.sim_node_count << std::endl;
