@@ -1115,8 +1115,10 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
                         const std::vector<int> &depth_id_order,
                         const std::map<int, int> &recv_counts,
                         const int my_vis_rank,
-                        const int my_render_recv_cnt, const int my_data_recv_cnt,
-                        const RenderConfig &render_cfg, const MPI_Properties &mpi_props,
+                        const int my_render_recv_cnt, 
+                        const int my_data_recv_cnt,
+                        const RenderConfig &render_cfg, 
+                        const MPI_Properties &mpi_props,
                         const MPI_Comm active_vis_comm)
 {
     auto t_start0 = std::chrono::system_clock::now();
@@ -1272,9 +1274,31 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
 
     std::cout << mpi_props.rank << " * VIS: start compositing " << std::endl;
 
-    // Set the vis_comm to be the vtkh comm.
-    vtkh::SetMPICommHandle(int(MPI_Comm_c2f(active_vis_comm)));
+    // correct active vis node count (relevant for pure in-transit)
     MPI_Barrier(active_vis_comm);
+    int num_active = 0;
+    MPI_Comm_size(active_vis_comm, &num_active);
+    std::vector<int> g_active(num_active, 0.f);
+    int render_size = render_ptrs[0].size();
+    MPI_Allgather(&render_size, 1, MPI_INT, g_active.data(), 1, MPI_INT, active_vis_comm);
+
+    for (const auto &a : g_active)
+    {
+        if (a == 0)
+            --num_active;
+    }
+
+    std::vector<int> vis_ranks(num_active);
+    std::iota(vis_ranks.begin(), vis_ranks.end(), 0); // inactive nodes are always highest ranks
+    MPI_Group active_vis_group_corrected;
+    MPI_Group_incl(mpi_props.vis_group, num_active, vis_ranks.data(), &active_vis_group_corrected);
+    MPI_Comm active_vis_comm_corrected;
+    MPI_Comm_create_group(active_vis_comm, active_vis_group_corrected, 3, &active_vis_comm_corrected);
+
+    // Set the active vis node comm to be the vtkh comm.
+    vtkh::SetMPICommHandle(int(MPI_Comm_c2f(active_vis_comm_corrected)));
+    if (render_size == 0)
+        return;
 
     // Set the number of receiving depth values per node and the according displacements.
     std::vector<int> counts_recv;
@@ -1313,18 +1337,21 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
 
         for (int i = 0; i < render_ptrs[j].size(); i++)
         {
-            // std::cout << ": " << j << " " << i << " " << std::endl;
-            depths[i] = (*render_ptrs[j][i])["depths"].child(render_order[j][i]).to_float();
+            // std::cout << ": " << j << " " << i << " / " << render_order[j].size() << std::endl;
+            if (render_order[j].size() > i)
+                depths[i] = (*render_ptrs[j][i])["depths"].child(render_order[j][i]).to_float();
         }
 
         MPI_Allgatherv(depths.data(), depths.size(),
                         MPI_FLOAT, v_depths.data(), counts_recv.data(), displacements.data(),
-                        MPI_FLOAT, active_vis_comm);
+                        MPI_FLOAT, active_vis_comm_corrected);
 
         std::vector<std::pair<float, int> > depth_id(v_depths.size());
 
         for (int k = 0; k < v_depths.size(); k++)
+        {
             depth_id[k] = std::make_pair(v_depths[k], depth_id_order[k]);
+        }
         // sort based on depth values
         std::sort(depth_id.begin(), depth_id.end());
 
@@ -1635,6 +1662,9 @@ void hybrid_render(const MPI_Properties &mpi_props,
     const int TAG_DATA = 0;
     const int TAG_PROBING = TAG_DATA + 1;
     const int TAG_INLINE = TAG_PROBING + 1;
+    // mpi comm tags
+    const int TAG_COMM_ACTIVE_VIS = 2;
+
     // std::cout << "+++ MPI Comm world: " << MPI_Comm_c2f(mpi_props.comm_world) << std::endl;
 
     // common options for both sim and vis nodes
@@ -1939,7 +1969,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
         MPI_Group active_vis_group;
         MPI_Group_incl(mpi_props.vis_group, active_vis_nodes, vis_ranks.data(), &active_vis_group);
         MPI_Comm active_vis_comm;
-        MPI_Comm_create_group(mpi_props.comm_vis, active_vis_group, 2, &active_vis_comm);
+        MPI_Comm_create_group(mpi_props.comm_vis, active_vis_group, TAG_COMM_ACTIVE_VIS, &active_vis_comm);
 
         if (active_nodes[my_vis_rank])
         {
