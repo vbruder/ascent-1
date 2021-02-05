@@ -1282,23 +1282,23 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     int render_size = render_ptrs[0].size();
     MPI_Allgather(&render_size, 1, MPI_INT, g_active.data(), 1, MPI_INT, active_vis_comm);
 
-    for (const auto &a : g_active)
+    std::vector<int> vis_ranks;
+    for (int i = 0; i < g_active.size(); ++i)
     {
-        if (a == 0)
-            --num_active;
+        if (g_active[i] > 0)
+            vis_ranks.push_back(i);
     }
 
-    std::vector<int> vis_ranks(num_active);
-    std::iota(vis_ranks.begin(), vis_ranks.end(), 0); // inactive nodes are always highest ranks
     MPI_Group active_vis_group_corrected;
-    MPI_Group_incl(mpi_props.vis_group, num_active, vis_ranks.data(), &active_vis_group_corrected);
+    MPI_Group_incl(mpi_props.vis_group, vis_ranks.size(), vis_ranks.data(), &active_vis_group_corrected);
     MPI_Comm active_vis_comm_corrected;
     MPI_Comm_create_group(active_vis_comm, active_vis_group_corrected, 3, &active_vis_comm_corrected);
 
+    if (render_size == 0 || active_vis_comm_corrected == MPI_COMM_NULL)
+        return;
+
     // Set the active vis node comm to be the vtkh comm.
     vtkh::SetMPICommHandle(int(MPI_Comm_c2f(active_vis_comm_corrected)));
-    if (render_size == 0)
-        return;
 
     // Set the number of receiving depth values per node and the according displacements.
     std::vector<int> counts_recv;
@@ -1447,6 +1447,13 @@ void hybrid_compositing(const vec_node_uptr &render_chunks_probe,
     {
         log_time(t_start0, "+ compositing total ", mpi_props.rank);
         log_global_time("end compositing", mpi_props.rank);
+    }
+
+    MPI_Group_free(&active_vis_group_corrected);
+    if (active_vis_comm_corrected != MPI_COMM_NULL)
+    {
+        MPI_Barrier(active_vis_comm_corrected);
+        MPI_Comm_free(&active_vis_comm_corrected);
     }
 }
 #endif
