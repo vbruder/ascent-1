@@ -948,7 +948,7 @@ void detach_mpi_buffer()
 int calc_render_msg_size(const int render_count, const int width = 800, const int height = 800,
                          const int channels = 4+4)
 {
-    const int overhead_render = 396 + 512;    // TODO: add correct bytes for name
+    const int overhead_render = 396 + 628;    // TODO: add correct bytes for name
     const int overhead_global = 288;
     return render_count * channels * width * height +
            render_count * overhead_render + overhead_global;
@@ -1918,6 +1918,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 verify_info.print();
             }
         }   // for: render all datasets sent
+
+        log_global_time("end render", mpi_props.rank);
         
         auto t_render = std::chrono::system_clock::now();
         while (threads.size() > 0)
@@ -1930,7 +1932,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
         }
         print_time(t_render,  " * VIS: copy total ", mpi_props.rank);
 
-        log_global_time("end render", mpi_props.rank);
+        log_global_time("end copy", mpi_props.rank);
 
         {   // wait for receive of render chunks to complete
             auto t_start = std::chrono::system_clock::now();
@@ -2110,6 +2112,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 sum_copy += t_end - t_render;
                 // print_time(t_render, "  ~SIM: ascent info ", mpi_props.rank, 1.0 / (end - begin));
             }
+            log_global_time("end render", mpi_props.rank);
 
             auto t_render = std::chrono::system_clock::now();
             while (threads.size() > 0)
@@ -2127,7 +2130,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                       << sum_render.count()/g_render_counts[mpi_props.rank] << std::endl;
             std::cout << mpi_props.rank << "  ~SIM: copy (sum) " << sum_copy.count() << std::endl;
 
-            log_global_time("end render", mpi_props.rank);
+            log_global_time("end copy", mpi_props.rank);
 
             {   // wait for all sent data to be received
                 t_start = std::chrono::system_clock::now();
