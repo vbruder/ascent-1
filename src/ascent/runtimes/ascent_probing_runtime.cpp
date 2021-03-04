@@ -321,7 +321,7 @@ struct RenderConfig
     float sim_time = 0.f;
     std::vector<int> probing_ids;
 
-    const static int WIDTH = 800;
+    const static int WIDTH = 800;   // TODO: get the actual render size from input deck
     const static int HEIGHT = 800;
     const static int CHANNELS = 4 + 4; // RGBA + depth (float)
 
@@ -1931,7 +1931,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
             threads.pop_back();
         }
         print_time(t_render,  " * VIS: copy total ", mpi_props.rank);
-
         log_global_time("end copy", mpi_props.rank);
 
         {   // wait for receive of render chunks to complete
@@ -2129,7 +2128,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
             std::cout << mpi_props.rank << "  ~SIM: avg t/render " 
                       << sum_render.count()/g_render_counts[mpi_props.rank] << std::endl;
             std::cout << mpi_props.rank << "  ~SIM: copy (sum) " << sum_copy.count() << std::endl;
-
             log_global_time("end copy", mpi_props.rank);
 
             {   // wait for all sent data to be received

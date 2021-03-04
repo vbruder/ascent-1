@@ -1379,7 +1379,7 @@ CreatePlot::verify_params(const conduit::Node &params,
     valid_paths.push_back("topology");
 
     if(res)
-   {
+    {
       if(params["type"].as_string() == "mesh")
       {
         is_mesh = true;
@@ -1395,6 +1395,7 @@ CreatePlot::verify_params(const conduit::Node &params,
       valid_paths.push_back("min_value");
       valid_paths.push_back("max_value");
       valid_paths.push_back("samples");
+      valid_paths.push_back("supersampling");
     }
     else
     {
@@ -1522,6 +1523,11 @@ CreatePlot::execute()
     {
       vtkm::cont::ColorTable color_table =  parse_color_table(plot_params["color_table"]);
       renderer->SetColorTable(color_table);
+    }
+
+    if(plot_params.has_path("supersampling"))
+    {
+      renderer->SetSupersampling(plot_params["supersampling"].to_int32());
     }
 
     vtkm::Range scalar_range;
