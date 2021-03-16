@@ -1924,8 +1924,15 @@ void hybrid_render(const MPI_Properties &mpi_props,
         // TODO: test
         for (int i = 0; i < my_data_recv_cnt; ++i)
         {
-            threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
-                                                   std::ref(render_chunks_vis[i])));
+            const int render_count_sim = render_cfg.get_render_count_from_non_probing(g_render_counts[src_ranks[i]]);
+            const int current_render_count = render_cfg.max_count - render_count_sim;
+            const int render_offset = render_cfg.max_count - current_render_count;
+            const int probing_count_part = render_cfg.get_probing_count_part(current_render_count, render_offset);
+            if (current_render_count - probing_count_part > 0)
+            {
+                threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
+                                                    std::ref(render_chunks_vis[i])));
+            }
         }
 
         {   // wait for receive of render chunks to complete
