@@ -1905,7 +1905,7 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 }
                 else
                 {
-                    render_chunks_vis[i] = std::make_shared<Node>();
+                    // render_chunks_vis[i] = std::make_shared<Node>();
                 }
 
                 log_time(start, "+ render vis " + std::to_string(current_render_count - probing_count_part) + " ", mpi_props.rank);
@@ -1932,6 +1932,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
             {
                 threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
                                                     std::ref(render_chunks_vis[i])));
+            }
+            else
+            {
+                render_chunks_vis[i] = std::make_shared<Node>();
             }
         }
 
