@@ -2135,6 +2135,9 @@ void hybrid_render(const MPI_Properties &mpi_props,
 
             for (int i = 0; i < batch_sizes.size(); ++i)
             {
+                const int render_count = batch_sizes[i];
+                if (render_count == 0)
+                    break;
                 threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
                                               destination,
                                               TAG_INLINE + i, mpi_props.comm_world,
