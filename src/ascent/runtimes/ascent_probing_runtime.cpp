@@ -1900,12 +1900,12 @@ void hybrid_render(const MPI_Properties &mpi_props,
                                mpi_props.rank,
                                current_render_count ? 1.0 / current_render_count : 1.0);
 
-                    // threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
-                    //                                std::ref(render_chunks_vis[i])));
+                    threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
+                                                   std::ref(render_chunks_vis[i])));
                 }
                 else
                 {
-                    // render_chunks_vis[i] = std::make_shared<Node>();
+                    render_chunks_vis[i] = std::make_shared<Node>();
                 }
 
                 log_time(start, "+ render vis " + std::to_string(current_render_count - probing_count_part) + " ", mpi_props.rank);
@@ -1920,24 +1920,18 @@ void hybrid_render(const MPI_Properties &mpi_props,
         }   // for: render all datasets sent
 
         log_global_time("end render", mpi_props.rank);
-
-        // TODO: test
-        for (int i = 0; i < my_data_recv_cnt; ++i)
+        
+        auto t_render = std::chrono::system_clock::now();
+        while (threads.size() > 0)
         {
-            const int render_count_sim = render_cfg.get_render_count_from_non_probing(g_render_counts[src_ranks[i]]);
-            const int current_render_count = render_cfg.max_count - render_count_sim;
-            const int render_offset = render_cfg.max_count - current_render_count;
-            const int probing_count_part = render_cfg.get_probing_count_part(current_render_count, render_offset);
-            if (current_render_count - probing_count_part > 0)
-            {
-                threads.push_back(std::thread(&get_renders, std::ref(ascent_renders[i]),
-                                                    std::ref(render_chunks_vis[i])));
-            }
+            if (threads.back().joinable())
+                threads.back().join();
             else
-            {
-                render_chunks_vis[i] = std::make_shared<Node>();
-            }
+                ASCENT_ERROR("Thread not joinable.")
+            threads.pop_back();
         }
+        print_time(t_render,  " * VIS: copy total ", mpi_props.rank);
+        log_global_time("end copy", mpi_props.rank);
 
         {   // wait for receive of render chunks to complete
             auto t_start = std::chrono::system_clock::now();
@@ -1962,20 +1956,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
             log_time(t_start, "+ wait receive img ", mpi_props.rank);
         }
         log_global_time("end receiveRenders", mpi_props.rank);
-
-        {   // join copy threads
-            auto t_copy = std::chrono::system_clock::now();
-            while (threads.size() > 0)
-            {
-                if (threads.back().joinable())
-                    threads.back().join();
-                else
-                    ASCENT_ERROR("Thread not joinable.")
-                threads.pop_back();
-            }
-            print_time(t_copy,  " * VIS: copy total ", mpi_props.rank);
-            log_global_time("end copy", mpi_props.rank);
-        }
 
         // find out which of the vis nodes do actual rendering/compositing
         std::vector<int> active_nodes(mpi_props.vis_node_count, 0);
@@ -2122,10 +2102,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 renders_inline[i]["depth_buffers"].set_external(info[i]["depth_buffers"]);
                 renders_inline[i]["render_file_names"].set_external(info[i]["render_file_names"]);
 
-                // threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
-                //                               destination,
-                //                               TAG_INLINE + i, mpi_props.comm_world,
-                //                               std::ref(requests[i]), mpi_props.rank));
+                threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
+                                              destination,
+                                              TAG_INLINE + i, mpi_props.comm_world,
+                                              std::ref(requests[i]), mpi_props.rank));
 
                 t_end = std::chrono::system_clock::now();
                 sum_copy += t_end - t_render;
@@ -2133,20 +2113,22 @@ void hybrid_render(const MPI_Properties &mpi_props,
             }
             log_global_time("end render", mpi_props.rank);
 
-            for (int i = 0; i < batch_sizes.size(); ++i)
+            auto t_render = std::chrono::system_clock::now();
+            while (threads.size() > 0)
             {
-                const int render_count = batch_sizes[i];
-                if (render_count == 0)
-                    break;
-                threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
-                                              destination,
-                                              TAG_INLINE + i, mpi_props.comm_world,
-                                              std::ref(requests[i]), mpi_props.rank));
+                threads.back().join();
+                threads.pop_back();
             }
+            auto t_end = std::chrono::system_clock::now();
+            sum_copy += t_end - t_render;
 
             log_duration(sum_render, "+ render sim " + std::to_string(g_render_counts[mpi_props.rank]) + " ", mpi_props.rank);
+            log_duration(sum_copy, "+ copy sim " + std::to_string(g_render_counts[mpi_props.rank]) + " ", mpi_props.rank);
+
             std::cout << mpi_props.rank << "  ~SIM: avg t/render " 
                       << sum_render.count()/g_render_counts[mpi_props.rank] << std::endl;
+            std::cout << mpi_props.rank << "  ~SIM: copy (sum) " << sum_copy.count() << std::endl;
+            log_global_time("end copy", mpi_props.rank);
 
             {   // wait for all sent data to be received
                 t_start = std::chrono::system_clock::now();
@@ -2169,21 +2151,6 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 }
             }
             log_global_time("end sendRenders", mpi_props.rank);
-
-            {   // join copy threads
-                auto t_render = std::chrono::system_clock::now();
-                while (threads.size() > 0)
-                {
-                    threads.back().join();
-                    threads.pop_back();
-                }
-                auto t_end = std::chrono::system_clock::now();
-                sum_copy += t_end - t_render;
-                
-                log_duration(sum_copy, "+ copy sim " + std::to_string(g_render_counts[mpi_props.rank]) + " ", mpi_props.rank);
-                std::cout << mpi_props.rank << "  ~SIM: copy (sum) " << sum_copy.count() << std::endl;
-                log_global_time("end copy", mpi_props.rank);
-            }
 
             // Keep sim node ascent instances open until image chunks are sent.
             for (int i = 0; i < batch_sizes.size(); i++)
