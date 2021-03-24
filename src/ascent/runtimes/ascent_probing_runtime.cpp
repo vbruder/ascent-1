@@ -2069,11 +2069,9 @@ void hybrid_render(const MPI_Properties &mpi_props,
                                                 data_packed.total_bytes_compact(),
                                                 MPI_BYTE, destination, TAG_DATA, 
                                                 mpi_props.comm_world);
-                // pack_probing_thread = std::thread(&pack_and_send, std::ref(render_chunks_probing),
-                //                                   destination, TAG_PROBING, mpi_props.comm_world,
-                //                                   std::ref(request_probing), mpi_props.rank);
-                pack_and_send(render_chunks_probing, destination, TAG_PROBING, mpi_props.comm_world,
-                                request_probing, mpi_props.rank);              
+                pack_probing_thread = std::thread(&pack_and_send, std::ref(render_chunks_probing),
+                                                  destination, TAG_PROBING, mpi_props.comm_world,
+                                                  std::ref(request_probing), mpi_props.rank);
             }
 
             log_global_time("end sendData", mpi_props.rank);
@@ -2140,13 +2138,10 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 const int render_count = batch_sizes[i];
                 if (render_count == 0)
                     break;
-                // threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
-                //                               destination,
-                //                               TAG_INLINE + i, mpi_props.comm_world,
-                //                               std::ref(requests[i]), mpi_props.rank));
-                pack_and_send(renders_inline[i], destination,
-                                TAG_INLINE + i, mpi_props.comm_world,
-                                requests[i], mpi_props.rank);
+                threads.push_back(std::thread(&pack_and_send, std::ref(renders_inline[i]),
+                                              destination,
+                                              TAG_INLINE + i, mpi_props.comm_world,
+                                              std::ref(requests[i]), mpi_props.rank));
             }
 
             log_duration(sum_render, "+ render sim " + std::to_string(g_render_counts[mpi_props.rank]) + " ", mpi_props.rank);
@@ -2163,8 +2158,8 @@ void hybrid_render(const MPI_Properties &mpi_props,
                 if (!skipped_render)
                 {
                     // probing
-                    // if (pack_probing_thread.joinable())
-                    //     pack_probing_thread.join();
+                    if (pack_probing_thread.joinable())
+                        pack_probing_thread.join();
                     MPI_Wait(&request_probing, MPI_STATUS_IGNORE);
                     // inline render chunks
                     int mpi_error = MPI_Waitall(requests.size(), requests.data(), MPI_STATUSES_IGNORE);
